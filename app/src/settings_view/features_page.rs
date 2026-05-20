@@ -81,8 +81,12 @@ use crate::user_config::{WarpConfig, WarpConfigUpdateEvent};
 use crate::util::bindings::{
     keybinding_name_to_display_string, reset_keybinding_to_default, set_custom_keybinding,
 };
+use crate::util::file::external_editor::{
+    settings::{OpenWorkingDirEditor, OpenWorkingDirInEditorEnabled},
+    working_dir_editor::WorkingDirEditor,
+    EditorSettings,
+};
 use crate::view_components::{Dropdown, DropdownItem, FilterableDropdown};
-use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::workspace::tab_settings::{NewTabPlacement, TabSettings};
 use crate::workspace::WorkspaceAction;
 use crate::{appearance::Appearance, settings::native_preference::NativePreferenceSettings};
@@ -1754,14 +1758,11 @@ impl TypedActionView for FeaturesPageView {
             }
             SetWorkingDirEditor(editor) => self.set_working_dir_editor(editor, ctx),
             ToggleOpenWorkingDirInEditor => {
-                crate::util::file::external_editor::EditorSettings::handle(ctx).update(
-                    ctx,
-                    |editor_settings, ctx| {
-                        report_if_error!(editor_settings
-                            .open_working_dir_in_editor_enabled
-                            .toggle_and_save_value(ctx))
-                    },
-                )
+                EditorSettings::handle(ctx).update(ctx, |editor_settings, ctx| {
+                    report_if_error!(editor_settings
+                        .open_working_dir_in_editor_enabled
+                        .toggle_and_save_value(ctx))
+                })
             }
             SetDefaultSessionMode(mode) => self.set_default_session_mode(mode, ctx),
             SetDefaultTabConfig(path) => {
@@ -2166,16 +2167,10 @@ impl FeaturesPageView {
 
         let working_dir_editor_dropdown = ctx.add_typed_action_view(Dropdown::new);
         Self::update_working_dir_editor_dropdown(working_dir_editor_dropdown.clone(), ctx);
-        ctx.subscribe_to_model(
-            &crate::util::file::external_editor::EditorSettings::handle(ctx),
-            |me, _, _, ctx| {
-                Self::update_working_dir_editor_dropdown(
-                    me.working_dir_editor_dropdown.clone(),
-                    ctx,
-                );
-                ctx.notify();
-            },
-        );
+        ctx.subscribe_to_model(&EditorSettings::handle(ctx), |me, _, _, ctx| {
+            Self::update_working_dir_editor_dropdown(me.working_dir_editor_dropdown.clone(), ctx);
+            ctx.notify();
+        });
 
         let default_session_mode_dropdown = ctx.add_typed_action_view(FilterableDropdown::new);
         Self::update_default_session_mode_dropdown(default_session_mode_dropdown.clone(), ctx);
@@ -2493,8 +2488,7 @@ impl FeaturesPageView {
         #[cfg(feature = "local_fs")]
         {
             if !FeatureFlag::OpenWarpNewSettingsModes.is_enabled() {
-                let external_editor_settings =
-                    crate::util::file::external_editor::EditorSettings::as_ref(ctx);
+                let external_editor_settings = EditorSettings::as_ref(ctx);
                 if external_editor_settings
                     .open_file_editor
                     .is_supported_on_current_platform()
@@ -2853,9 +2847,7 @@ impl FeaturesPageView {
     ) {
         dropdown.update(ctx, |dropdown, ctx| {
             let values: Vec<WorkingDirEditor> = enum_iterator::all().collect();
-            let current_value =
-                *crate::util::file::external_editor::EditorSettings::as_ref(ctx)
-                    .open_working_dir_editor;
+            let current_value = *EditorSettings::as_ref(ctx).open_working_dir_editor;
             let selected_index = values
                 .iter()
                 .position(|val| *val == current_value)
@@ -2881,10 +2873,9 @@ impl FeaturesPageView {
         value: &WorkingDirEditor,
         ctx: &mut ViewContext<Self>,
     ) {
-        let _ = crate::util::file::external_editor::EditorSettings::handle(ctx).update(
-            ctx,
-            |editor_settings, ctx| editor_settings.open_working_dir_editor.set_value(*value, ctx),
-        );
+        let _ = EditorSettings::handle(ctx).update(ctx, |editor_settings, ctx| {
+            editor_settings.open_working_dir_editor.set_value(*value, ctx)
+        });
     }
 
     fn update_new_tab_placement_dropdown(
@@ -4523,14 +4514,14 @@ impl SettingsWidget for OpenWorkingDirInEditorToggleWidget {
         appearance: &Appearance,
         app: &AppContext,
     ) -> Box<dyn Element> {
-        let editor_settings = crate::util::file::external_editor::EditorSettings::as_ref(app);
+        let editor_settings = EditorSettings::as_ref(app);
         let ui_builder = appearance.ui_builder();
         render_body_item::<FeaturesPageAction>(
             "Open working directory in editor".into(),
             None,
             LocalOnlyIconState::for_setting(
-                crate::util::file::external_editor::settings::OpenWorkingDirInEditorEnabled::storage_key(),
-                crate::util::file::external_editor::settings::OpenWorkingDirInEditorEnabled::sync_to_cloud(),
+                OpenWorkingDirInEditorEnabled::storage_key(),
+                OpenWorkingDirInEditorEnabled::sync_to_cloud(),
                 &mut view
                     .button_mouse_states
                     .local_only_icon_tooltip_states
@@ -4574,8 +4565,8 @@ impl SettingsWidget for WorkingDirEditorWidget {
             None,
             None,
             LocalOnlyIconState::for_setting(
-                crate::util::file::external_editor::settings::OpenWorkingDirEditor::storage_key(),
-                crate::util::file::external_editor::settings::OpenWorkingDirEditor::sync_to_cloud(),
+                OpenWorkingDirEditor::storage_key(),
+                OpenWorkingDirEditor::sync_to_cloud(),
                 &mut view
                     .button_mouse_states
                     .local_only_icon_tooltip_states

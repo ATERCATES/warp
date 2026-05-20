@@ -415,7 +415,6 @@ pub enum TerminalAction {
     ToggleConversationDetailsPanel,
     /// Cancel the ambient agent task while it's loading
     CancelAmbientAgentTask,
-    /// Open the terminal's current working directory in the configured external editor
     OpenWorkingDirInEditor,
     OpenInlineHistoryMenu,
     OpenModelSelector,

@@ -11361,6 +11361,7 @@ impl TerminalView {
                     .get_completed_warpify_session_id(active_session_id, ctx)
                 {
                     self.remove_ssh_block_by_id(block_id);
+                    self.push_ssh_state_to_input(ctx);
                 }
 
                 self.dismiss_warpify_banner(
@@ -22251,14 +22252,50 @@ impl TerminalView {
         }
     }
 
+    pub fn active_ssh_host(&self, ctx: &AppContext) -> Option<&str> {
+        if self.active_session_is_local(ctx) != Some(false) {
+            return None;
+        }
+        self.warpify_state.last_warpified_ssh_host()
+    }
+
     fn push_ssh_state_to_input(&mut self, ctx: &mut ViewContext<Self>) {
-        let host = self
-            .warpify_state
-            .last_warpified_ssh_host()
-            .map(str::to_owned);
+        let host = self.active_ssh_host(ctx).map(str::to_owned);
         self.input.update(ctx, |input, ctx| {
             input.update_ssh_state(host, ctx);
         });
+    }
+
+    fn open_working_dir_in_editor(&mut self, ctx: &mut ViewContext<Self>) {
+        let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
+        let bin = editor.command();
+        let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
+            command::blocking::Command::new(bin)
+                .arg(&pwd)
+                .spawn()
+                .map_err(|err| (err, format!("{bin} {pwd}")))
+        } else if editor.supports_ssh_remote() {
+            let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
+                return;
+            };
+            let Some(pwd) = self.pwd() else {
+                return;
+            };
+            let args = editor.ssh_remote_args(&host, &pwd);
+            command::blocking::Command::new(bin)
+                .args(&args)
+                .spawn()
+                .map_err(|err| (err, format!("{bin} {args:?}")))
+        } else {
+            return;
+        };
+        if let Err((err, cmd)) = spawn_result {
+            log::warn!("Failed to launch `{cmd}`: {err}");
+            self.show_error_toast(
+                format!("Could not launch {}: {err}", editor.display_name()),
+                ctx,
+            );
+        }
     }
 
     pub fn shell_launch_data_if_local(&self, ctx: &AppContext) -> Option<ShellLaunchData> {
@@ -26408,22 +26445,7 @@ impl TypedActionView for TerminalView {
                 ctx.notify();
             }
             OpenWorkingDirInEditor => {
-                let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
-                let bin = editor.command();
-                if let Some(pwd) = self.pwd_if_local(ctx) {
-                    if let Err(err) = command::blocking::Command::new(bin).arg(&pwd).spawn() {
-                        log::warn!("Failed to launch `{bin} {pwd}`: {err}");
-                    }
-                } else if editor.supports_ssh_remote() {
-                    if let (Some(host), Some(pwd)) =
-                        (self.warpify_state.last_warpified_ssh_host(), self.pwd())
-                    {
-                        let args = editor.ssh_remote_args(host, &pwd);
-                        if let Err(err) = command::blocking::Command::new(bin).args(&args).spawn() {
-                            log::warn!("Failed to launch `{bin} {args:?}`: {err}");
-                        }
-                    }
-                }
+                self.open_working_dir_in_editor(ctx);
             }
             ToggleUsageFooter => {
                 self.toggle_usage_footer(ctx);

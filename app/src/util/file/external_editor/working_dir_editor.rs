@@ -66,8 +66,8 @@ impl WorkingDirEditor {
         }
     }
 
-    pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> Vec<String> {
-        vec![
+    pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> [String; 3] {
+        [
             "--remote".into(),
             format!("ssh-remote+{ssh_host}"),
             path.into(),

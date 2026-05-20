@@ -397,6 +397,7 @@ impl WarpifyState {
         state: WarpifyTriggerState,
         ctx: &mut ViewContext<TerminalView>,
     ) -> Option<EntityId> {
+        self.last_warpified_ssh_host = None;
         self.clear_ssh_block_state();
         ctx.notify();
         let Some(block) = &state.ssh_block_state else {
