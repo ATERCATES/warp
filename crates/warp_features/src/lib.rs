@@ -877,9 +877,6 @@ pub enum FeatureFlag {
 
     /// Enables the code review view for remote sessions.
     RemoteCodeReview,
-
-    /// Adds a button to the terminal pane header that opens the working directory in VSCode.
-    OpenWorkingDirInVSCode,
 }
 
 static FLAG_STATES: [AtomicBool; cardinality::<FeatureFlag>()] =
@@ -948,7 +945,6 @@ pub const DOGFOOD_FLAGS: &[FeatureFlag] = &[
     FeatureFlag::RemoteCodebaseIndexing,
     FeatureFlag::BillingAndUsagePageV2,
     FeatureFlag::RemoteCodeReview,
-    FeatureFlag::OpenWorkingDirInVSCode,
 ];
 
 /// Features enabled for feature preview build users (e.g.: Friends of Warp).

@@ -5,7 +5,6 @@
 use anyhow::Result;
 use warp_core::{
     channel::{Channel, ChannelConfig, ChannelState, OzConfig, WarpServerConfig},
-    features::FeatureFlag,
     AppId,
 };
 
@@ -26,7 +25,6 @@ fn main() -> Result<()> {
     );
     if cfg!(debug_assertions) {
         state = state.with_additional_features(warp_core::features::DEBUG_FLAGS);
-        state = state.with_additional_features(&[FeatureFlag::OpenWorkingDirInVSCode]);
     }
     ChannelState::set(state);
 

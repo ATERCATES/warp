@@ -8,8 +8,10 @@ use crate::context_chips::display_chip::format_git_branch_command;
 use crate::settings::InputSettings;
 use crate::terminal::model_events::ModelEventDispatcher;
 use crate::terminal::view::TerminalAction;
+use crate::ui_components::blended_colors;
 use crate::ui_components::buttons::icon_button_with_color;
-use crate::ui_components::{blended_colors, icons};
+use crate::util::file::external_editor::settings::EditorSettings;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::{
     ai::blocklist::{BlocklistAIContextModel, BlocklistAIInputEvent, BlocklistAIInputModel},
     completer::SessionContext,
@@ -78,7 +80,7 @@ pub struct PromptDisplay {
 
     agent_view_controller: ModelHandle<AgentViewController>,
 
-    open_working_dir_in_vscode_mouse_state: warpui::elements::MouseStateHandle,
+    open_working_dir_in_editor_mouse_state: warpui::elements::MouseStateHandle,
 }
 
 const PROMPT_CHIP_DISPLAY_ID: &str = "PromptChipDisplay";
@@ -163,31 +165,31 @@ impl PromptDisplay {
             agent_view_controller,
             pane_is_focused: true,
             is_shared_session_viewer,
-            open_working_dir_in_vscode_mouse_state: Default::default(),
+            open_working_dir_in_editor_mouse_state: Default::default(),
         }
     }
 
-    fn render_open_working_dir_in_vscode_button(&self, app: &AppContext) -> Box<dyn Element> {
+    fn render_open_working_dir_in_editor_button(
+        &self,
+        editor: WorkingDirEditor,
+        app: &AppContext,
+    ) -> Box<dyn Element> {
         let appearance = Appearance::as_ref(app);
         let theme = appearance.theme();
         let ui_builder = appearance.ui_builder().clone();
+        let tooltip_text = format!("Open working directory in {}", editor.display_name());
 
         icon_button_with_color(
             appearance,
-            icons::Icon::LinkExternal,
+            editor.icon(),
             false,
-            self.open_working_dir_in_vscode_mouse_state.clone(),
+            self.open_working_dir_in_editor_mouse_state.clone(),
             blended_colors::text_sub(theme, theme.background()).into(),
         )
-        .with_tooltip(move || {
-            ui_builder
-                .tool_tip("Open working directory in VSCode".to_string())
-                .build()
-                .finish()
-        })
+        .with_tooltip(move || ui_builder.tool_tip(tooltip_text.clone()).build().finish())
         .build()
         .on_click(|ctx, _, _| {
-            ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInVSCode);
+            ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInEditor);
         })
         .finish()
     }
@@ -465,8 +467,10 @@ impl View for PromptDisplay {
             }
         });
 
-        if FeatureFlag::OpenWorkingDirInVSCode.is_enabled() {
-            row.add_child(self.render_open_working_dir_in_vscode_button(app));
+        let editor_settings = EditorSettings::as_ref(app);
+        if *editor_settings.open_working_dir_in_editor_enabled {
+            let editor = *editor_settings.open_working_dir_editor;
+            row.add_child(self.render_open_working_dir_in_editor_button(editor, app));
         }
 
         // This is a hack to apply horizontal clipping without vertical clipping (for padding).

@@ -25351,7 +25351,7 @@ impl TypedActionView for TerminalView {
             | StartNewAgentConversation
             | ToggleConversationDetailsPanel
             | CancelAmbientAgentTask
-            | OpenWorkingDirInVSCode
+            | OpenWorkingDirInEditor
             | OpenInlineHistoryMenu
             | OpenModelSelector
             | ResolvePromptSuggestion(..)
@@ -26396,10 +26396,12 @@ impl TypedActionView for TerminalView {
                 }
                 ctx.notify();
             }
-            OpenWorkingDirInVSCode => {
+            OpenWorkingDirInEditor => {
+                let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
                 if let Some(pwd) = self.pwd_if_local(ctx) {
-                    if let Err(err) = command::blocking::Command::new("code").arg(&pwd).spawn() {
-                        log::warn!("Failed to launch `code {pwd}`: {err}");
+                    let bin = editor.command();
+                    if let Err(err) = command::blocking::Command::new(bin).arg(&pwd).spawn() {
+                        log::warn!("Failed to launch `{bin} {pwd}`: {err}");
                     }
                 }
             }
