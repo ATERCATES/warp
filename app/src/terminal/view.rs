@@ -11173,6 +11173,7 @@ impl TerminalView {
                             if !self.model.lock().tmux_control_mode_active() {
                                 self.warpify_state
                                     .set_pending_ssh_host(warpify_command.to_string(), ssh_host);
+                                self.push_ssh_state_to_input(ctx);
                                 self.model.lock().start_notify_on_end_of_ssh_login();
                                 ctx.emit(Event::TerminalViewStateChanged);
                             }
@@ -22250,6 +22251,17 @@ impl TerminalView {
         }
     }
 
+    fn push_ssh_state_to_input(&mut self, ctx: &mut ViewContext<Self>) {
+        let host = self
+            .warpify_state
+            .last_warpified_ssh_host()
+            .map(str::to_owned);
+        let nested = self.warpify_state.nested_ssh_detected();
+        self.input.update(ctx, |input, ctx| {
+            input.update_ssh_state(host, nested, ctx);
+        });
+    }
+
     pub fn shell_launch_data_if_local(&self, ctx: &AppContext) -> Option<ShellLaunchData> {
         if !FeatureFlag::ShellSelector.is_enabled() {
             return None;
@@ -26398,10 +26410,19 @@ impl TypedActionView for TerminalView {
             }
             OpenWorkingDirInEditor => {
                 let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
+                let bin = editor.command();
                 if let Some(pwd) = self.pwd_if_local(ctx) {
-                    let bin = editor.command();
                     if let Err(err) = command::blocking::Command::new(bin).arg(&pwd).spawn() {
                         log::warn!("Failed to launch `{bin} {pwd}`: {err}");
+                    }
+                } else if editor.supports_ssh_remote() && !self.warpify_state.nested_ssh_detected() {
+                    if let (Some(host), Some(pwd)) =
+                        (self.warpify_state.last_warpified_ssh_host(), self.pwd())
+                    {
+                        let args = editor.ssh_remote_args(host, &pwd);
+                        if let Err(err) = command::blocking::Command::new(bin).args(&args).spawn() {
+                            log::warn!("Failed to launch `{bin} {args:?}`: {err}");
+                        }
                     }
                 }
             }

@@ -173,6 +173,8 @@ pub struct WarpifyState {
     subshell_separator_state: SubshellSeparatorState,
     /// A unique-enough ID that is used to validate that a timeout is still valid.
     timeout_id: u8,
+    last_warpified_ssh_host: Option<String>,
+    nested_ssh_detected: bool,
 }
 
 impl WarpifyState {
@@ -336,7 +338,21 @@ impl WarpifyState {
     pub fn set_pending_ssh_host(&mut self, command: String, ssh_host: Option<String>) {
         let pending_state = self.pending_state.get_or_insert_with(Default::default);
         pending_state.pending_command = Some(command);
-        pending_state.pending_warpify_ssh_host = ssh_host;
+        pending_state.pending_warpify_ssh_host = ssh_host.clone();
+        if let Some(host) = ssh_host {
+            if self.last_warpified_ssh_host.is_some() {
+                self.nested_ssh_detected = true;
+            }
+            self.last_warpified_ssh_host = Some(host);
+        }
+    }
+
+    pub fn last_warpified_ssh_host(&self) -> Option<&str> {
+        self.last_warpified_ssh_host.as_deref()
+    }
+
+    pub fn nested_ssh_detected(&self) -> bool {
+        self.nested_ssh_detected
     }
 
     pub fn set_tmux_installation_state(&mut self, tmux_installation: TmuxInstallationState) {

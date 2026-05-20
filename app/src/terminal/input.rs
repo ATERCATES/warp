@@ -14369,6 +14369,19 @@ impl Input {
         });
     }
 
+    pub fn update_ssh_state(
+        &mut self,
+        ssh_host: Option<String>,
+        nested_ssh: bool,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        self.prompt_render_helper
+            .prompt_view()
+            .update(ctx, |prompt, prompt_ctx| {
+                prompt.update_ssh_state(ssh_host, nested_ssh, prompt_ctx);
+            });
+    }
+
     pub fn update_repo_path(&mut self, repo_path: Option<PathBuf>, ctx: &mut ViewContext<Self>) {
         self.prompt_render_helper
             .prompt_view()

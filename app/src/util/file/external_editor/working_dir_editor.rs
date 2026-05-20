@@ -58,6 +58,21 @@ impl WorkingDirEditor {
             Self::Zed => Icon::ZedLogo,
         }
     }
+
+    pub fn supports_ssh_remote(self) -> bool {
+        match self {
+            Self::VsCode | Self::Cursor | Self::Windsurf | Self::Antigravity => true,
+            Self::Zed => false,
+        }
+    }
+
+    pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> Vec<String> {
+        vec![
+            "--remote".into(),
+            format!("ssh-remote+{ssh_host}"),
+            path.into(),
+        ]
+    }
 }
 
 impl std::fmt::Display for WorkingDirEditor {
