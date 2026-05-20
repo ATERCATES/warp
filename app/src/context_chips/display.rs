@@ -3,9 +3,13 @@ use std::sync::Arc;
 use crate::ai::blocklist::agent_view::AgentViewController;
 use crate::ai::blocklist::{BlocklistAIHistoryEvent, BlocklistAIHistoryModel};
 use crate::ai::document::ai_document_model::{AIDocumentId, AIDocumentVersion};
+use crate::appearance::Appearance;
 use crate::context_chips::display_chip::format_git_branch_command;
 use crate::settings::InputSettings;
 use crate::terminal::model_events::ModelEventDispatcher;
+use crate::terminal::view::TerminalAction;
+use crate::ui_components::buttons::icon_button_with_color;
+use crate::ui_components::{blended_colors, icons};
 use crate::{
     ai::blocklist::{BlocklistAIContextModel, BlocklistAIInputEvent, BlocklistAIInputModel},
     completer::SessionContext,
@@ -19,6 +23,7 @@ use warpui::{
         ChildView, Clipped, Container, CrossAxisAlignment, Element, Flex, MainAxisAlignment,
         MainAxisSize, ParentElement, Wrap,
     },
+    ui_components::components::UiComponent,
     AppContext, Entity, EntityId, FocusContext, ModelHandle, SingletonEntity, TypedActionView,
     View, ViewContext, ViewHandle,
 };
@@ -72,6 +77,8 @@ pub struct PromptDisplay {
     is_shared_session_viewer: bool,
 
     agent_view_controller: ModelHandle<AgentViewController>,
+
+    open_working_dir_in_vscode_mouse_state: warpui::elements::MouseStateHandle,
 }
 
 const PROMPT_CHIP_DISPLAY_ID: &str = "PromptChipDisplay";
@@ -156,7 +163,33 @@ impl PromptDisplay {
             agent_view_controller,
             pane_is_focused: true,
             is_shared_session_viewer,
+            open_working_dir_in_vscode_mouse_state: Default::default(),
         }
+    }
+
+    fn render_open_working_dir_in_vscode_button(&self, app: &AppContext) -> Box<dyn Element> {
+        let appearance = Appearance::as_ref(app);
+        let theme = appearance.theme();
+        let ui_builder = appearance.ui_builder().clone();
+
+        icon_button_with_color(
+            appearance,
+            icons::Icon::LinkExternal,
+            false,
+            self.open_working_dir_in_vscode_mouse_state.clone(),
+            blended_colors::text_sub(theme, theme.background()).into(),
+        )
+        .with_tooltip(move || {
+            ui_builder
+                .tool_tip("Open working directory in VSCode".to_string())
+                .build()
+                .finish()
+        })
+        .build()
+        .on_click(|ctx, _, _| {
+            ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInVSCode);
+        })
+        .finish()
     }
 
     pub fn has_open_chip_menu(&self, app: &AppContext) -> bool {
@@ -431,6 +464,10 @@ impl View for PromptDisplay {
                 row.add_child(ChildView::new(display_chip).finish());
             }
         });
+
+        if FeatureFlag::OpenWorkingDirInVSCode.is_enabled() {
+            row.add_child(self.render_open_working_dir_in_vscode_button(app));
+        }
 
         // This is a hack to apply horizontal clipping without vertical clipping (for padding).
         Container::new(

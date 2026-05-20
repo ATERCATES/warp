@@ -25351,6 +25351,7 @@ impl TypedActionView for TerminalView {
             | StartNewAgentConversation
             | ToggleConversationDetailsPanel
             | CancelAmbientAgentTask
+            | OpenWorkingDirInVSCode
             | OpenInlineHistoryMenu
             | OpenModelSelector
             | ResolvePromptSuggestion(..)
@@ -26394,6 +26395,13 @@ impl TypedActionView for TerminalView {
                     });
                 }
                 ctx.notify();
+            }
+            OpenWorkingDirInVSCode => {
+                if let Some(pwd) = self.pwd_if_local(ctx) {
+                    if let Err(err) = command::blocking::Command::new("code").arg(&pwd).spawn() {
+                        log::warn!("Failed to launch `code {pwd}`: {err}");
+                    }
+                }
             }
             ToggleUsageFooter => {
                 self.toggle_usage_footer(ctx);

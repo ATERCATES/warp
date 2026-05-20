@@ -415,6 +415,8 @@ pub enum TerminalAction {
     ToggleConversationDetailsPanel,
     /// Cancel the ambient agent task while it's loading
     CancelAmbientAgentTask,
+    /// Open the terminal's current working directory in VSCode
+    OpenWorkingDirInVSCode,
     OpenInlineHistoryMenu,
     OpenModelSelector,
     ResolvePromptSuggestion(PromptSuggestionResolution),
@@ -732,6 +734,7 @@ impl fmt::Debug for TerminalAction {
             StartNewAgentConversation => write!(f, "StartNewAgentConversation"),
             ToggleConversationDetailsPanel => write!(f, "ToggleConversationDetailsPanel"),
             CancelAmbientAgentTask => write!(f, "CancelAmbientAgentTask"),
+            OpenWorkingDirInVSCode => write!(f, "OpenWorkingDirInVSCode"),
             OpenInlineHistoryMenu => write!(f, "OpenInlineHistoryMenu"),
             OpenModelSelector => write!(f, "OpenModelSelector"),
             ResolvePromptSuggestion(..) => write!(f, "ResolvePromptSuggestion"),
