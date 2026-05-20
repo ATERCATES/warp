@@ -83,7 +83,6 @@ pub struct PromptDisplay {
     open_working_dir_in_editor_mouse_state: warpui::elements::MouseStateHandle,
 
     ssh_host: Option<String>,
-    nested_ssh: bool,
 }
 
 const PROMPT_CHIP_DISPLAY_ID: &str = "PromptChipDisplay";
@@ -170,7 +169,6 @@ impl PromptDisplay {
             is_shared_session_viewer,
             open_working_dir_in_editor_mouse_state: Default::default(),
             ssh_host: None,
-            nested_ssh: false,
         }
     }
 
@@ -396,15 +394,9 @@ impl PromptDisplay {
     }
 
     /// Update the current repository path and rebuild chips.
-    pub fn update_ssh_state(
-        &mut self,
-        ssh_host: Option<String>,
-        nested_ssh: bool,
-        ctx: &mut ViewContext<Self>,
-    ) {
-        if self.ssh_host != ssh_host || self.nested_ssh != nested_ssh {
+    pub fn update_ssh_state(&mut self, ssh_host: Option<String>, ctx: &mut ViewContext<Self>) {
+        if self.ssh_host != ssh_host {
             self.ssh_host = ssh_host;
-            self.nested_ssh = nested_ssh;
             ctx.notify();
         }
     }
@@ -488,10 +480,7 @@ impl View for PromptDisplay {
         let editor_settings = EditorSettings::as_ref(app);
         if *editor_settings.open_working_dir_in_editor_enabled {
             let editor = *editor_settings.open_working_dir_editor;
-            let show = match &self.ssh_host {
-                None => true,
-                Some(_) => !self.nested_ssh && editor.supports_ssh_remote(),
-            };
+            let show = self.ssh_host.is_none() || editor.supports_ssh_remote();
             if show {
                 row.add_child(self.render_open_working_dir_in_editor_button(editor, app));
             }

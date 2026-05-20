@@ -22256,9 +22256,8 @@ impl TerminalView {
             .warpify_state
             .last_warpified_ssh_host()
             .map(str::to_owned);
-        let nested = self.warpify_state.nested_ssh_detected();
         self.input.update(ctx, |input, ctx| {
-            input.update_ssh_state(host, nested, ctx);
+            input.update_ssh_state(host, ctx);
         });
     }
 
@@ -26415,7 +26414,7 @@ impl TypedActionView for TerminalView {
                     if let Err(err) = command::blocking::Command::new(bin).arg(&pwd).spawn() {
                         log::warn!("Failed to launch `{bin} {pwd}`: {err}");
                     }
-                } else if editor.supports_ssh_remote() && !self.warpify_state.nested_ssh_detected() {
+                } else if editor.supports_ssh_remote() {
                     if let (Some(host), Some(pwd)) =
                         (self.warpify_state.last_warpified_ssh_host(), self.pwd())
                     {
