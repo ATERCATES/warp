@@ -11173,7 +11173,6 @@ impl TerminalView {
                             if !self.model.lock().tmux_control_mode_active() {
                                 self.warpify_state
                                     .set_pending_ssh_host(warpify_command.to_string(), ssh_host);
-                                self.push_ssh_state_to_input(ctx);
                                 self.model.lock().start_notify_on_end_of_ssh_login();
                                 ctx.emit(Event::TerminalViewStateChanged);
                             }
@@ -11361,7 +11360,6 @@ impl TerminalView {
                     .get_completed_warpify_session_id(active_session_id, ctx)
                 {
                     self.remove_ssh_block_by_id(block_id);
-                    self.push_ssh_state_to_input(ctx);
                 }
 
                 self.dismiss_warpify_banner(
@@ -22259,13 +22257,6 @@ impl TerminalView {
         self.warpify_state.last_warpified_ssh_host()
     }
 
-    fn push_ssh_state_to_input(&mut self, ctx: &mut ViewContext<Self>) {
-        let host = self.active_ssh_host(ctx).map(str::to_owned);
-        self.input.update(ctx, |input, ctx| {
-            input.update_ssh_state(host, ctx);
-        });
-    }
-
     fn open_working_dir_in_editor(&mut self, ctx: &mut ViewContext<Self>) {
         let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
         let bin = editor.command();
@@ -22274,7 +22265,7 @@ impl TerminalView {
                 .arg(&pwd)
                 .spawn()
                 .map_err(|err| (err, format!("{bin} {pwd}")))
-        } else if editor.supports_ssh_remote() {
+        } else {
             let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
                 return;
             };
@@ -22286,8 +22277,6 @@ impl TerminalView {
                 .args(&args)
                 .spawn()
                 .map_err(|err| (err, format!("{bin} {args:?}")))
-        } else {
-            return;
         };
         if let Err((err, cmd)) = spawn_result {
             log::warn!("Failed to launch `{cmd}`: {err}");

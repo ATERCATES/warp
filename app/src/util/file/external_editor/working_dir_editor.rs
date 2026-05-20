@@ -59,19 +59,22 @@ impl WorkingDirEditor {
         }
     }
 
-    pub fn supports_ssh_remote(self) -> bool {
+    pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> Vec<String> {
         match self {
-            Self::VsCode | Self::Cursor | Self::Windsurf | Self::Antigravity => true,
-            Self::Zed => false,
+            Self::VsCode | Self::Cursor | Self::Windsurf | Self::Antigravity => vec![
+                "--remote".into(),
+                format!("ssh-remote+{ssh_host}"),
+                path.into(),
+            ],
+            Self::Zed => {
+                let normalized = if path.starts_with('/') {
+                    path.to_string()
+                } else {
+                    format!("/{path}")
+                };
+                vec![format!("ssh://{ssh_host}{normalized}")]
+            }
         }
-    }
-
-    pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> [String; 3] {
-        [
-            "--remote".into(),
-            format!("ssh-remote+{ssh_host}"),
-            path.into(),
-        ]
     }
 }
 
