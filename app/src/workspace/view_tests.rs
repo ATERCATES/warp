@@ -2684,6 +2684,7 @@ fn test_open_tab_config_with_params_does_not_use_worktree_branch_as_implicit_tit
             }],
             params: HashMap::new(),
             source_path: None,
+            metadata: None,
         };
 
         workspace.update(&mut app, |workspace, ctx| {
@@ -2730,6 +2731,7 @@ fn test_open_tab_config_with_params_uses_explicit_title_template() {
             }],
             params: HashMap::new(),
             source_path: None,
+            metadata: None,
         };
 
         workspace.update(&mut app, |workspace, ctx| {

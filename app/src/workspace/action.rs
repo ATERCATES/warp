@@ -612,6 +612,15 @@ pub enum WorkspaceAction {
         select_first: bool,
     },
     ToggleAgentManagementView,
+    ToggleRemoteSessionsPanel,
+    OpenRemoteAttachTab {
+        local_host_key: String,
+        session_name: String,
+    },
+    CloseRemoteAttachTab {
+        local_host_key: String,
+        session_name: String,
+    },
     ViewAgentRunsForEnvironment {
         environment_id: String,
     },
@@ -955,6 +964,9 @@ impl WorkspaceAction {
             | ToggleConversationListView
             | ToggleNotificationMailbox { .. }
             | ToggleAgentManagementView
+            | ToggleRemoteSessionsPanel
+            | OpenRemoteAttachTab { .. }
+            | CloseRemoteAttachTab { .. }
             | ViewAgentRunsForEnvironment { .. }
             | ToggleAIDocumentPane { .. }
             | HideAIDocumentPanes
