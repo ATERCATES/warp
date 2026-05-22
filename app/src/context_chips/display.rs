@@ -351,7 +351,6 @@ impl PromptDisplay {
         ctx.notify();
     }
 
-    /// Update the current repository path and rebuild chips.
     pub fn update_repo_path(&mut self, repo_path: Option<PathBuf>, ctx: &mut ViewContext<Self>) {
         self.current_repo_path = repo_path;
         let new_chips = self.collect_chips(ctx);
