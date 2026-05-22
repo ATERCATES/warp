@@ -518,6 +518,7 @@ use crate::util::bindings::{
 use crate::util::clipboard::clipboard_content_with_escaped_paths;
 use crate::util::color::darken;
 use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
+#[cfg(feature = "local_fs")]
 use crate::util::file::external_editor::{settings::EditorLayout, EditorSettings};
 #[cfg(feature = "local_fs")]
 use crate::util::openable_file_type::{is_markdown_file, resolve_file_target, FileTarget};
