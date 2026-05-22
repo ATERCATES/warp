@@ -7,8 +7,8 @@ use warpui::elements::{
     MainAxisSize, ParentElement, Wrap,
 };
 use warpui::{
-    ui_components::components::UiComponent, AppContext, Entity, EntityId, FocusContext,
-    ModelHandle, SingletonEntity, TypedActionView, View, ViewContext, ViewHandle,
+    AppContext, Entity, EntityId, FocusContext, ModelHandle, SingletonEntity, TypedActionView,
+    View, ViewContext, ViewHandle,
 };
 
 use super::display_chip::{DisplayChip, DisplayChipConfig, PromptDisplayChipEvent};
@@ -20,17 +20,11 @@ use crate::ai::blocklist::{
     BlocklistAIInputEvent, BlocklistAIInputModel,
 };
 use crate::ai::document::ai_document_model::{AIDocumentId, AIDocumentVersion};
-use crate::appearance::Appearance;
 use crate::completer::SessionContext;
 use crate::context_chips::display_chip::{format_git_branch_command, DisplayChipAction};
 use crate::settings::InputSettings;
 use crate::terminal::input::MenuPositioningProvider;
 use crate::terminal::model_events::ModelEventDispatcher;
-use crate::terminal::view::TerminalAction;
-use crate::ui_components::blended_colors;
-use crate::ui_components::buttons::icon_button_with_color;
-use crate::util::file::external_editor::settings::EditorSettings;
-use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 
 /// Enum introduced to abstract over the different row types we use for the prompt display,
 /// between the non-UDI and UDI cases.
@@ -74,8 +68,6 @@ pub struct PromptDisplay {
     is_shared_session_viewer: bool,
 
     agent_view_controller: ModelHandle<AgentViewController>,
-
-    open_working_dir_in_editor_mouse_state: warpui::elements::MouseStateHandle,
 }
 
 const PROMPT_CHIP_DISPLAY_ID: &str = "PromptChipDisplay";
@@ -160,33 +152,7 @@ impl PromptDisplay {
             agent_view_controller,
             pane_is_focused: true,
             is_shared_session_viewer,
-            open_working_dir_in_editor_mouse_state: Default::default(),
         }
-    }
-
-    fn render_open_working_dir_in_editor_button(
-        &self,
-        editor: WorkingDirEditor,
-        app: &AppContext,
-    ) -> Box<dyn Element> {
-        let appearance = Appearance::as_ref(app);
-        let theme = appearance.theme();
-        let ui_builder = appearance.ui_builder().clone();
-        let tooltip_text = format!("Open working directory in {}", editor.display_name());
-
-        icon_button_with_color(
-            appearance,
-            editor.icon(),
-            false,
-            self.open_working_dir_in_editor_mouse_state.clone(),
-            blended_colors::text_sub(theme, theme.background()).into(),
-        )
-        .with_tooltip(move || ui_builder.tool_tip(tooltip_text.clone()).build().finish())
-        .build()
-        .on_click(|ctx, _, _| {
-            ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInEditor);
-        })
-        .finish()
     }
 
     pub fn has_open_chip_menu(&self, app: &AppContext) -> bool {
@@ -460,12 +426,6 @@ impl View for PromptDisplay {
                 row.add_child(ChildView::new(display_chip).finish());
             }
         });
-
-        let editor_settings = EditorSettings::as_ref(app);
-        if *editor_settings.open_working_dir_in_editor_enabled {
-            let editor = *editor_settings.open_working_dir_editor;
-            row.add_child(self.render_open_working_dir_in_editor_button(editor, app));
-        }
 
         // This is a hack to apply horizontal clipping without vertical clipping (for padding).
         Container::new(

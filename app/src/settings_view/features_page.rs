@@ -103,11 +103,7 @@ use crate::user_config::{WarpConfig, WarpConfigUpdateEvent};
 use crate::util::bindings::{
     keybinding_name_to_display_string, reset_keybinding_to_default, set_custom_keybinding,
 };
-use crate::util::file::external_editor::{
-    settings::{OpenWorkingDirEditor, OpenWorkingDirInEditorEnabled},
-    working_dir_editor::WorkingDirEditor,
-    EditorSettings,
-};
+use crate::util::file::external_editor::EditorSettings;
 use crate::view_components::{Dropdown, DropdownItem, FilterableDropdown};
 use crate::workspace::tab_settings::{NewTabPlacement, TabSettings, TabSettingsChangedEvent};
 use crate::workspace::WorkspaceAction;
@@ -628,8 +624,6 @@ pub enum FeaturesPageAction {
     SetCtrlTabBehavior(CtrlTabBehavior),
     SetPreferredGraphicsBackend(Option<GraphicsBackend>),
     SetNewTabPlacement(NewTabPlacement),
-    SetWorkingDirEditor(WorkingDirEditor),
-    ToggleOpenWorkingDirInEditor,
     SetDefaultSessionMode(DefaultSessionMode),
     SetDefaultTabConfig(String),
     SearchForKeybinding(String),
@@ -1036,14 +1030,6 @@ impl FeaturesPageAction {
                 action: "SetNewTabPlacement".to_string(),
                 value: format!("{new_tab_placement:?}"),
             },
-            Self::SetWorkingDirEditor(editor) => TelemetryEvent::FeaturesPageAction {
-                action: "SetWorkingDirEditor".to_string(),
-                value: format!("{editor:?}"),
-            },
-            Self::ToggleOpenWorkingDirInEditor => TelemetryEvent::FeaturesPageAction {
-                action: "ToggleOpenWorkingDirInEditor".to_string(),
-                value: String::new(),
-            },
             Self::SetDefaultSessionMode(mode) => TelemetryEvent::FeaturesPageAction {
                 action: "SetDefaultSessionMode".to_string(),
                 value: format!("{mode:?}"),
@@ -1243,7 +1229,6 @@ pub struct FeaturesPageView {
     tab_behavior_dropdown: ViewHandle<Dropdown<FeaturesPageAction>>,
     graphics_backend_dropdown: ViewHandle<Dropdown<FeaturesPageAction>>,
     new_tab_placement_dropdown: ViewHandle<Dropdown<FeaturesPageAction>>,
-    working_dir_editor_dropdown: ViewHandle<Dropdown<FeaturesPageAction>>,
     default_session_mode_dropdown: ViewHandle<FilterableDropdown<FeaturesPageAction>>,
     tab_behavior: Tracked<TabBehavior>,
     completions_keystroke: Tracked<String>,
@@ -1751,14 +1736,6 @@ impl TypedActionView for FeaturesPageView {
             SetNewTabPlacement(new_tab_placement) => {
                 self.set_new_tab_placement(new_tab_placement, ctx)
             }
-            SetWorkingDirEditor(editor) => self.set_working_dir_editor(editor, ctx),
-            ToggleOpenWorkingDirInEditor => {
-                EditorSettings::handle(ctx).update(ctx, |editor_settings, ctx| {
-                    report_if_error!(editor_settings
-                        .open_working_dir_in_editor_enabled
-                        .toggle_and_save_value(ctx))
-                })
-            }
             SetDefaultSessionMode(mode) => self.set_default_session_mode(mode, ctx),
             SetDefaultTabConfig(path) => {
                 AISettings::handle(ctx).update(ctx, |ai_settings, ctx| {
@@ -2160,13 +2137,6 @@ impl FeaturesPageView {
             ctx.notify();
         });
 
-        let working_dir_editor_dropdown = ctx.add_typed_action_view(Dropdown::new);
-        Self::update_working_dir_editor_dropdown(working_dir_editor_dropdown.clone(), ctx);
-        ctx.subscribe_to_model(&EditorSettings::handle(ctx), |me, _, _, ctx| {
-            Self::update_working_dir_editor_dropdown(me.working_dir_editor_dropdown.clone(), ctx);
-            ctx.notify();
-        });
-
         let default_session_mode_dropdown = ctx.add_typed_action_view(FilterableDropdown::new);
         Self::update_default_session_mode_dropdown(default_session_mode_dropdown.clone(), ctx);
 
@@ -2436,7 +2406,6 @@ impl FeaturesPageView {
             ctrl_tab_behavior_dropdown,
             graphics_backend_dropdown,
             new_tab_placement_dropdown,
-            working_dir_editor_dropdown,
             default_session_mode_dropdown,
             tab_behavior: Default::default(),
 
@@ -2492,9 +2461,6 @@ impl FeaturesPageView {
                 }
             }
         }
-
-        general_widgets.push(Box::new(OpenWorkingDirInEditorToggleWidget::default()));
-        general_widgets.push(Box::new(WorkingDirEditorWidget::default()));
 
         if general_settings
             .show_warning_before_quitting
@@ -2833,43 +2799,6 @@ impl FeaturesPageView {
                 ctx,
             );
             dropdown.set_selected_by_index(selected_index, ctx);
-        });
-    }
-
-    fn update_working_dir_editor_dropdown(
-        dropdown: ViewHandle<Dropdown<FeaturesPageAction>>,
-        ctx: &mut ViewContext<Self>,
-    ) {
-        dropdown.update(ctx, |dropdown, ctx| {
-            let values: Vec<WorkingDirEditor> = enum_iterator::all().collect();
-            let current_value = *EditorSettings::as_ref(ctx).open_working_dir_editor;
-            let selected_index = values
-                .iter()
-                .position(|val| *val == current_value)
-                .unwrap_or(0);
-            dropdown.set_items(
-                values
-                    .into_iter()
-                    .map(|val| {
-                        DropdownItem::new(
-                            val.display_name(),
-                            FeaturesPageAction::SetWorkingDirEditor(val),
-                        )
-                    })
-                    .collect(),
-                ctx,
-            );
-            dropdown.set_selected_by_index(selected_index, ctx);
-        });
-    }
-
-    fn set_working_dir_editor(
-        &mut self,
-        value: &WorkingDirEditor,
-        ctx: &mut ViewContext<Self>,
-    ) {
-        let _ = EditorSettings::handle(ctx).update(ctx, |editor_settings, ctx| {
-            editor_settings.open_working_dir_editor.set_value(*value, ctx)
         });
     }
 
@@ -4487,89 +4416,6 @@ impl SettingsWidget for LinkTooltipWidget {
                 })
                 .finish(),
             None,
-        )
-    }
-}
-
-#[derive(Default)]
-struct OpenWorkingDirInEditorToggleWidget {
-    switch_state: SwitchStateHandle,
-}
-
-impl SettingsWidget for OpenWorkingDirInEditorToggleWidget {
-    type View = FeaturesPageView;
-
-    fn search_terms(&self) -> &str {
-        "open working directory editor vscode cursor windsurf zed antigravity terminal chip"
-    }
-
-    fn render(
-        &self,
-        view: &Self::View,
-        appearance: &Appearance,
-        app: &AppContext,
-    ) -> Box<dyn Element> {
-        let editor_settings = EditorSettings::as_ref(app);
-        let ui_builder = appearance.ui_builder();
-        render_body_item::<FeaturesPageAction>(
-            "Open working directory in editor".into(),
-            None,
-            LocalOnlyIconState::for_setting(
-                OpenWorkingDirInEditorEnabled::storage_key(),
-                OpenWorkingDirInEditorEnabled::sync_to_cloud(),
-                &mut view
-                    .button_mouse_states
-                    .local_only_icon_tooltip_states
-                    .borrow_mut(),
-                app,
-            ),
-            ToggleState::Enabled,
-            appearance,
-            ui_builder
-                .switch(self.switch_state.clone())
-                .check(*editor_settings.open_working_dir_in_editor_enabled)
-                .build()
-                .on_click(move |ctx, _, _| {
-                    ctx.dispatch_typed_action(FeaturesPageAction::ToggleOpenWorkingDirInEditor);
-                })
-                .finish(),
-            None,
-        )
-    }
-}
-
-#[derive(Default)]
-struct WorkingDirEditorWidget {}
-
-impl SettingsWidget for WorkingDirEditorWidget {
-    type View = FeaturesPageView;
-
-    fn search_terms(&self) -> &str {
-        "working directory editor vscode cursor windsurf zed antigravity ide"
-    }
-
-    fn render(
-        &self,
-        view: &Self::View,
-        appearance: &Appearance,
-        app: &AppContext,
-    ) -> Box<dyn Element> {
-        render_dropdown_item(
-            appearance,
-            "Editor for working directory button",
-            None,
-            None,
-            LocalOnlyIconState::for_setting(
-                OpenWorkingDirEditor::storage_key(),
-                OpenWorkingDirEditor::sync_to_cloud(),
-                &mut view
-                    .button_mouse_states
-                    .local_only_icon_tooltip_states
-                    .borrow_mut(),
-                app,
-            ),
-            None,
-            &view.working_dir_editor_dropdown,
         )
     }
 }

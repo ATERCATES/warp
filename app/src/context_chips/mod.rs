@@ -36,6 +36,7 @@ use crate::features::FeatureFlag;
 use crate::themes::theme::PromptColors;
 use crate::ui_components::blended_colors;
 use crate::ui_components::icons::Icon;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 
 /// The value of a context chip. Most chips produce plain text, but some
 /// (like `GitDiffStats`) carry structured data to avoid string round-trips.
@@ -182,6 +183,8 @@ pub enum ContextChipKind {
     Subshell,
     /// A chip that shows the plan and todo list for the current conversation.
     AgentPlanAndTodoList,
+    /// A clickable chip that opens the current working directory in an external IDE.
+    OpenInEditorButton(WorkingDirEditor),
 }
 
 impl ContextChipKind {
@@ -357,12 +360,20 @@ impl ContextChipKind {
                 |_| Some(ChipValue::Text(String::new())),
                 RefreshConfig::OnDemandOnly,
             )),
+            Self::OpenInEditorButton(_) => Some(ContextChip::builtin(
+                "Open in IDE",
+                |_| Some(ChipValue::Text(String::new())),
+                RefreshConfig::OnDemandOnly,
+            )),
         }
     }
 
     /// Whether the context chip has a copyable value.
     pub fn is_copyable(&self) -> bool {
-        !matches!(self, Self::AgentPlanAndTodoList)
+        !matches!(
+            self,
+            Self::AgentPlanAndTodoList | Self::OpenInEditorButton(_)
+        )
     }
 
     /// Returns a generator to be used for the first fetch of
@@ -405,6 +416,9 @@ impl ContextChipKind {
             Self::Ssh => ChipValue::Text("alice@127.0.0.1".to_string()),
             Self::Subshell => ChipValue::Text("bash".to_string()),
             Self::AgentPlanAndTodoList => ChipValue::Text("Plan and Todo List".to_string()),
+            Self::OpenInEditorButton(editor) => {
+                ChipValue::Text(format!("Open in {}", editor.display_name()))
+            }
         }
     }
 
@@ -437,6 +451,7 @@ impl ContextChipKind {
             Self::Ssh => prompt_colors.input_prompt_ssh,
             Self::Subshell => prompt_colors.input_prompt_subshell,
             Self::AgentPlanAndTodoList => prompt_colors.input_prompt_agent_mode_hint,
+            Self::OpenInEditorButton(_) => prompt_colors.input_prompt_pwd,
             Self::Custom { .. } => ColorU::new(255, 255, 255, 255),
         };
 
@@ -530,6 +545,7 @@ impl ContextChipKind {
             Self::GithubPullRequest => Some(Icon::Github),
             Self::KubernetesContext => Some(Icon::Globe),
             Self::AgentPlanAndTodoList => Some(Icon::CheckSkinny),
+            Self::OpenInEditorButton(editor) => Some(editor.icon()),
             Self::Custom { .. } => None,
         }
     }
@@ -566,6 +582,9 @@ pub fn available_chips() -> Vec<ContextChipKind> {
         ContextChipKind::SvnBranch,
         ContextChipKind::SvnDirtyItems,
     ]);
+    chips.extend(
+        enum_iterator::all::<WorkingDirEditor>().map(ContextChipKind::OpenInEditorButton),
+    );
     chips
 }
 

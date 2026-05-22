@@ -518,6 +518,7 @@ use crate::util::bindings::{
 use crate::util::clipboard::clipboard_content_with_escaped_paths;
 use crate::util::color::darken;
 #[cfg(feature = "local_fs")]
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::util::file::external_editor::{settings::EditorLayout, EditorSettings};
 #[cfg(feature = "local_fs")]
 use crate::util::openable_file_type::{is_markdown_file, resolve_file_target, FileTarget};
@@ -22268,8 +22269,11 @@ impl TerminalView {
         self.warpify_state.last_warpified_ssh_host()
     }
 
-    fn open_working_dir_in_editor(&mut self, ctx: &mut ViewContext<Self>) {
-        let editor = *EditorSettings::as_ref(ctx).open_working_dir_editor;
+    fn open_working_dir_in_editor(
+        &mut self,
+        editor: WorkingDirEditor,
+        ctx: &mut ViewContext<Self>,
+    ) {
         let bin = editor.command();
         let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
             command::blocking::Command::new(bin)
@@ -22278,9 +22282,17 @@ impl TerminalView {
                 .map_err(|err| (err, format!("{bin} {pwd}")))
         } else {
             let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
+                self.show_error_toast(
+                    "Cannot detect remote SSH host. Warpify the SSH session first.".to_owned(),
+                    ctx,
+                );
                 return;
             };
             let Some(pwd) = self.pwd() else {
+                self.show_error_toast(
+                    "Cannot detect remote working directory.".to_owned(),
+                    ctx,
+                );
                 return;
             };
             let args = editor.ssh_remote_args(&host, &pwd);
@@ -25399,7 +25411,7 @@ impl TypedActionView for TerminalView {
             | StartNewAgentConversation
             | ToggleConversationDetailsPanel
             | CancelAmbientAgentTask
-            | OpenWorkingDirInEditor
+            | OpenWorkingDirInEditor(..)
             | OpenInlineHistoryMenu
             | OpenModelSelector
             | ResolvePromptSuggestion(..)
@@ -26444,8 +26456,8 @@ impl TypedActionView for TerminalView {
                 }
                 ctx.notify();
             }
-            OpenWorkingDirInEditor => {
-                self.open_working_dir_in_editor(ctx);
+            OpenWorkingDirInEditor(editor) => {
+                self.open_working_dir_in_editor(*editor, ctx);
             }
             ToggleUsageFooter => {
                 self.toggle_usage_footer(ctx);

@@ -30,6 +30,7 @@ use crate::code_review::telemetry_event::CodeReviewPaneEntrypoint;
 use crate::server::ids::SyncId;
 use crate::server::telemetry::{AgentModeRewindEntrypoint, PaletteSource, ToggleBlockFilterSource};
 use crate::terminal::available_shells::AvailableShell;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::terminal::block_list_element::{
     BlockHoverAction, BlockListMenuSource, BlockSelectAction, BlockTextSelectAction,
 };
@@ -406,7 +407,7 @@ pub enum TerminalAction {
     ToggleConversationDetailsPanel,
     /// Cancel the ambient agent task while it's loading
     CancelAmbientAgentTask,
-    OpenWorkingDirInEditor,
+    OpenWorkingDirInEditor(WorkingDirEditor),
     OpenInlineHistoryMenu,
     OpenModelSelector,
     ResolvePromptSuggestion(PromptSuggestionResolution),
@@ -724,7 +725,7 @@ impl fmt::Debug for TerminalAction {
             StartNewAgentConversation => write!(f, "StartNewAgentConversation"),
             ToggleConversationDetailsPanel => write!(f, "ToggleConversationDetailsPanel"),
             CancelAmbientAgentTask => write!(f, "CancelAmbientAgentTask"),
-            OpenWorkingDirInEditor => write!(f, "OpenWorkingDirInEditor"),
+            OpenWorkingDirInEditor(..) => write!(f, "OpenWorkingDirInEditor"),
             OpenInlineHistoryMenu => write!(f, "OpenInlineHistoryMenu"),
             OpenModelSelector => write!(f, "OpenModelSelector"),
             ResolvePromptSuggestion(..) => write!(f, "ResolvePromptSuggestion"),
