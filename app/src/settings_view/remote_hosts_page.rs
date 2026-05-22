@@ -927,6 +927,7 @@ impl HostFormView {
         })
     }
 
+    #[cfg(feature = "remote_sessions")]
     fn test_connection(&mut self, ctx: &mut ViewContext<Self>) {
         if matches!(self.test_state, TestConnectionState::Running) {
             return;
@@ -965,6 +966,9 @@ impl HostFormView {
             },
         );
     }
+
+    #[cfg(not(feature = "remote_sessions"))]
+    fn test_connection(&mut self, _ctx: &mut ViewContext<Self>) {}
 
     fn handle_editor_event(&mut self, event: &EditorEvent, ctx: &mut ViewContext<Self>) {
         match event {
