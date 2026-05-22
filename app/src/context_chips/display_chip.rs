@@ -1199,8 +1199,7 @@ impl DisplayChip {
         let chip_text = format!("Open in {}", editor.display_name());
         let tooltip_text = format!("Open working directory in {}", editor.display_name());
         let is_in_agent_view = self.is_in_agent_view;
-        let is_interactive =
-            !self.is_shared_session_viewer && !self.is_cli_agent_session_active(app);
+        let is_interactive = !self.is_shared_session_viewer;
 
         let hover = Hoverable::new(self.mouse_state.clone(), move |state| {
             let mut config = UdiChipConfig::new_with_icon(editor.icon(), font_color, chip_text.clone())
