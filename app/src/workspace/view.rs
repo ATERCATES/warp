@@ -6556,7 +6556,7 @@ impl Workspace {
         }
         parts.push(host.host.clone());
         parts.push(shell_words::quote(&remote_script).into_owned());
-        let command = parts.join(" ");
+        let command = format!("exec {}", parts.join(" "));
         Some(TabConfig {
             name: format!("{} · {}", host.alias, session_name),
             title: Some(format!("{}: {}", host.alias, session_name)),
@@ -22135,6 +22135,29 @@ impl TypedActionView for Workspace {
                         self.open_tab_config(config, ctx);
                         if let Some(tab) = self.tabs.get(self.active_tab_index) {
                             self.remote_attach_tabs.insert(map_key, tab.pane_group.id());
+                            let terminal_view = tab
+                                .pane_group
+                                .as_ref(ctx)
+                                .terminal_views(ctx)
+                                .into_iter()
+                                .next();
+                            if let Some(terminal_view) = terminal_view {
+                                let host_key = key.clone();
+                                let session_name = name.clone();
+                                ctx.subscribe_to_view(
+                                    &terminal_view,
+                                    move |_me, _, event, ctx| {
+                                        if matches!(event, crate::terminal::view::Event::Exited) {
+                                            ctx.dispatch_typed_action(
+                                                &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {
+                                                    local_host_key: host_key.clone(),
+                                                    session_name: session_name.clone(),
+                                                },
+                                            );
+                                        }
+                                    },
+                                );
+                            }
                         }
                     } else {
                         log::warn!("OpenRemoteAttachTab: host {key} not found in settings");
