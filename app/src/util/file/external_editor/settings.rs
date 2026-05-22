@@ -1,9 +1,9 @@
-pub use crate::util::openable_file_type::EditorLayout;
-use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use serde::{Deserialize, Deserializer, Serialize};
-use settings::{
-    macros::define_settings_group, RespectUserSyncSetting, SupportedPlatforms, SyncToCloud,
-};
+use settings::macros::define_settings_group;
+use settings::{RespectUserSyncSetting, SupportedPlatforms, SyncToCloud};
+
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
+pub use crate::util::openable_file_type::EditorLayout;
 
 #[derive(
     Debug,

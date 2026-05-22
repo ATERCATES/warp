@@ -1,14 +1,15 @@
 //! Module that rasterizes text using `swash`.
 
+use anyhow::{anyhow, Result};
+use cosmic_text::{CacheKey, CacheKeyFlags};
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::{vec2i, Vector2F, Vector2I};
+
 use crate::fonts::canvas::{Canvas, RasterFormat};
 use crate::fonts::{FontId, GlyphId, RasterizedGlyph, SubpixelAlignment};
 use crate::platform::FontDB as _;
 use crate::rendering::GlyphConfig;
 use crate::windowing::winit::fonts::FontDB;
-use anyhow::{anyhow, Result};
-use cosmic_text::{CacheKey, CacheKeyFlags};
-use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{vec2i, Vector2F, Vector2I};
 
 impl FontDB {
     pub(super) fn glyph_raster_bounds(
@@ -94,7 +95,7 @@ impl FontDB {
                 .0,
             )
             .clone()
-            .unwrap();
+            .ok_or_else(|| anyhow!("Failed to get raster image"))?;
 
         let (original_format, is_color) = match image.content {
             cosmic_text::SwashContent::Mask => (RasterFormat::A8, false),
