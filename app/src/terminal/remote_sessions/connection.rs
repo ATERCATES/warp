@@ -115,6 +115,7 @@ impl RemoteHostConnection {
             stdin_holder.clone(),
             own_session_id,
             events_tx.clone(),
+            closing.clone(),
         );
         let heartbeat_task = spawn_heartbeat_task(
             &executor,
@@ -175,10 +176,12 @@ fn spawn_reader_task(
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     own_session_id: Arc<Mutex<Option<String>>>,
     events_tx: mpsc::UnboundedSender<ConnectionEvent>,
+    closing: Arc<AtomicBool>,
 ) -> BackgroundTask {
     executor.spawn(async move {
         let mut stream = CcStream::new(stdout);
         let mut handshake_done = false;
+        let mut clean_exit = false;
         while let Some(evt) = stream.next_event().await {
             match evt {
                 ControlEvent::Begin { .. } => {}
@@ -235,6 +238,7 @@ fn spawn_reader_task(
                 ControlEvent::Exit { reason } => {
                     let mut tx = events_tx.clone();
                     let _ = tx.send(ConnectionEvent::Exit(reason)).await;
+                    clean_exit = true;
                     break;
                 }
                 ControlEvent::ConfigError { line } => {
@@ -244,6 +248,9 @@ fn spawn_reader_task(
                     log::trace!("unknown tmux CC line: {line}");
                 }
             }
+        }
+        if !clean_exit && !closing.load(Ordering::Relaxed) {
+            signal_master_died(&stdin, &events_tx).await;
         }
     })
 }
@@ -277,8 +284,7 @@ fn spawn_heartbeat_task(
             };
             if let Err(e) = write_result {
                 log::warn!("remote_sessions heartbeat write failed: {e}");
-                let mut tx = events_tx.clone();
-                let _ = tx.send(ConnectionEvent::Error(HostError::MasterDied)).await;
+                signal_master_died(&stdin, &events_tx).await;
                 break;
             }
             match rx.with_timeout(HEARTBEAT_TIMEOUT).await {
@@ -288,13 +294,26 @@ fn spawn_heartbeat_task(
                         break;
                     }
                     log::warn!("remote_sessions heartbeat lost response: {other:?}");
-                    let mut tx = events_tx.clone();
-                    let _ = tx.send(ConnectionEvent::Error(HostError::MasterDied)).await;
+                    signal_master_died(&stdin, &events_tx).await;
                     break;
                 }
             }
         }
     })
+}
+
+async fn signal_master_died(
+    stdin: &Arc<Mutex<Option<ChildStdin>>>,
+    events_tx: &mpsc::UnboundedSender<ConnectionEvent>,
+) {
+    let mut guard = stdin.lock().await;
+    if guard.is_none() {
+        return;
+    }
+    guard.take();
+    drop(guard);
+    let mut tx = events_tx.clone();
+    let _ = tx.send(ConnectionEvent::Error(HostError::MasterDied)).await;
 }
 
 async fn trigger_refresh(stdin: &Arc<Mutex<Option<ChildStdin>>>, pending: &PendingQueue) {
