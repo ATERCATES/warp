@@ -1368,7 +1368,10 @@ pub(crate) fn initialize_app(
     terminal::available_shells::register(ctx);
 
     #[cfg(feature = "remote_sessions")]
-    terminal::remote_sessions::RemoteSessionsModel::register(ctx);
+    {
+        terminal::remote_sessions::RemoteSessionsModel::register(ctx);
+        terminal::remote_sessions::RemoteAttachRegistry::register(ctx);
+    }
 
     // Add truly global actions that don't depend on the existence of any view here
     ctx.add_global_action("app:toggle_user_ps1", move |_args: &(), ctx| {

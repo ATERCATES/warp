@@ -22110,6 +22110,10 @@ impl TypedActionView for Workspace {
                             self.remove_tab(index, false, true, ctx);
                         }
                     }
+                    crate::terminal::remote_sessions::RemoteAttachRegistry::handle(ctx).update(
+                        ctx,
+                        |reg, ctx| reg.forget_by_host(local_host_key, session_name, ctx),
+                    );
                 }
                 #[cfg(not(feature = "remote_sessions"))]
                 {
@@ -22147,7 +22151,19 @@ impl TypedActionView for Workspace {
                                 let session_name = name.clone();
                                 ctx.subscribe_to_view(
                                     &terminal_view,
-                                    move |_me, _, event, ctx| {
+                                    move |_me, tv_handle, event, ctx| {
+                                        if let Some(session_id) =
+                                            tv_handle.as_ref(ctx).active_block_session_id()
+                                        {
+                                            let info = crate::terminal::remote_sessions::RemoteAttachInfo {
+                                                local_host_key: host_key.clone(),
+                                                session_name: session_name.clone(),
+                                            };
+                                            crate::terminal::remote_sessions::RemoteAttachRegistry::handle(ctx)
+                                                .update(ctx, |reg, ctx| {
+                                                    reg.record(session_id, info, ctx);
+                                                });
+                                        }
                                         if matches!(event, crate::terminal::view::Event::Exited) {
                                             ctx.dispatch_typed_action(
                                                 &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {

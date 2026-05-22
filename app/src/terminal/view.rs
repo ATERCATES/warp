@@ -22269,13 +22269,53 @@ impl TerminalView {
         self.warpify_state.last_warpified_ssh_host()
     }
 
+    /// For tabs opened via the Remote Sessions panel, looks up the SSH host
+    /// associated with the active session via `RemoteAttachRegistry`. This is
+    /// the integration seam that lets features like "Open in IDE" treat
+    /// panel-spawned tabs as remote sessions even before the full warpify SSH
+    /// bootstrap promotes them to `SessionType::WarpifiedRemote`.
+    #[cfg(feature = "remote_sessions")]
+    pub fn remote_attach_host(&self, ctx: &AppContext) -> Option<String> {
+        use crate::settings::remote_hosts::RemoteSessionsSettings;
+        use crate::terminal::remote_sessions::RemoteAttachRegistry;
+        let session_id = self.active_block_session_id()?;
+        let registry = RemoteAttachRegistry::as_ref(ctx);
+        let info = registry.lookup(session_id)?;
+        let host_key = info.local_host_key.clone();
+        let settings = RemoteSessionsSettings::as_ref(ctx);
+        settings
+            .hosts
+            .to_vec()
+            .into_iter()
+            .find(|h| h.local_host_key == host_key)
+            .map(|h| h.host)
+    }
+
     fn open_working_dir_in_editor(
         &mut self,
         editor: WorkingDirEditor,
         ctx: &mut ViewContext<Self>,
     ) {
         let bin = editor.command();
-        let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
+        #[cfg(feature = "remote_sessions")]
+        let remote_attach_host = self.remote_attach_host(ctx);
+        #[cfg(not(feature = "remote_sessions"))]
+        let remote_attach_host: Option<String> = None;
+
+        let spawn_result = if let Some(host) = remote_attach_host {
+            let Some(pwd) = self.pwd() else {
+                self.show_error_toast(
+                    "Cannot detect remote working directory.".to_owned(),
+                    ctx,
+                );
+                return;
+            };
+            let args = editor.ssh_remote_args(&host, &pwd);
+            command::blocking::Command::new(bin)
+                .args(&args)
+                .spawn()
+                .map_err(|err| (err, format!("{bin} {args:?}")))
+        } else if let Some(pwd) = self.pwd_if_local(ctx) {
             command::blocking::Command::new(bin)
                 .arg(&pwd)
                 .spawn()
