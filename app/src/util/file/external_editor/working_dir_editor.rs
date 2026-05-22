@@ -16,7 +16,7 @@ use warp_core::ui::icons::Icon;
     settings_value::SettingsValue,
 )]
 #[schemars(
-    description = "Editor used when opening the terminal working directory from the prompt chip row.",
+    description = "External editor opened by the 'Open in IDE' prompt chip.",
     rename_all = "snake_case"
 )]
 pub enum WorkingDirEditor {

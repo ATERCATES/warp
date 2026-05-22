@@ -360,8 +360,8 @@ impl ContextChipKind {
                 |_| Some(ChipValue::Text(String::new())),
                 RefreshConfig::OnDemandOnly,
             )),
-            Self::OpenInEditorButton(_) => Some(ContextChip::builtin(
-                "Open in IDE",
+            Self::OpenInEditorButton(editor) => Some(ContextChip::builtin(
+                format!("Open in {}", editor.display_name()),
                 |_| Some(ChipValue::Text(String::new())),
                 RefreshConfig::OnDemandOnly,
             )),
