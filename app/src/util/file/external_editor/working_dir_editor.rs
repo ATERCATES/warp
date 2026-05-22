@@ -16,7 +16,7 @@ use warp_core::ui::icons::Icon;
     settings_value::SettingsValue,
 )]
 #[schemars(
-    description = "Editor used when opening the terminal working directory from the prompt chip row.",
+    description = "External editor opened by the 'Open in IDE' prompt chip.",
     rename_all = "snake_case"
 )]
 pub enum WorkingDirEditor {
@@ -28,45 +28,74 @@ pub enum WorkingDirEditor {
     Zed,
 }
 
+enum SshArgStyle {
+    VsCodeRemote,
+    ZedSshUrl,
+}
+
+struct EditorMeta {
+    display_name: &'static str,
+    command: &'static str,
+    icon: Icon,
+    ssh: SshArgStyle,
+}
+
 impl WorkingDirEditor {
-    pub fn display_name(self) -> &'static str {
+    fn meta(self) -> EditorMeta {
         match self {
-            Self::VsCode => "VS Code",
-            Self::Cursor => "Cursor",
-            Self::Windsurf => "Windsurf",
-            Self::Antigravity => "Antigravity",
-            Self::Zed => "Zed",
+            Self::VsCode => EditorMeta {
+                display_name: "VS Code",
+                command: "code",
+                icon: Icon::VsCodeLogo,
+                ssh: SshArgStyle::VsCodeRemote,
+            },
+            Self::Cursor => EditorMeta {
+                display_name: "Cursor",
+                command: "cursor",
+                icon: Icon::CursorLogo,
+                ssh: SshArgStyle::VsCodeRemote,
+            },
+            Self::Windsurf => EditorMeta {
+                display_name: "Windsurf",
+                command: "windsurf",
+                icon: Icon::WindsurfLogo,
+                ssh: SshArgStyle::VsCodeRemote,
+            },
+            Self::Antigravity => EditorMeta {
+                display_name: "Antigravity",
+                command: "antigravity",
+                icon: Icon::AntigravityLogo,
+                ssh: SshArgStyle::VsCodeRemote,
+            },
+            Self::Zed => EditorMeta {
+                display_name: "Zed",
+                command: "zed",
+                icon: Icon::ZedLogo,
+                ssh: SshArgStyle::ZedSshUrl,
+            },
         }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        self.meta().display_name
     }
 
     pub fn command(self) -> &'static str {
-        match self {
-            Self::VsCode => "code",
-            Self::Cursor => "cursor",
-            Self::Windsurf => "windsurf",
-            Self::Antigravity => "antigravity",
-            Self::Zed => "zed",
-        }
+        self.meta().command
     }
 
     pub fn icon(self) -> Icon {
-        match self {
-            Self::VsCode => Icon::VsCodeLogo,
-            Self::Cursor => Icon::CursorLogo,
-            Self::Windsurf => Icon::WindsurfLogo,
-            Self::Antigravity => Icon::AntigravityLogo,
-            Self::Zed => Icon::ZedLogo,
-        }
+        self.meta().icon
     }
 
     pub fn ssh_remote_args(self, ssh_host: &str, path: &str) -> Vec<String> {
-        match self {
-            Self::VsCode | Self::Cursor | Self::Windsurf | Self::Antigravity => vec![
+        match self.meta().ssh {
+            SshArgStyle::VsCodeRemote => vec![
                 "--remote".into(),
                 format!("ssh-remote+{ssh_host}"),
                 path.into(),
             ],
-            Self::Zed => {
+            SshArgStyle::ZedSshUrl => {
                 let normalized = if path.starts_with('/') {
                     path.to_string()
                 } else {

@@ -2,7 +2,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use settings::macros::define_settings_group;
 use settings::{RespectUserSyncSetting, SupportedPlatforms, SyncToCloud};
 
-use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 pub use crate::util::openable_file_type::EditorLayout;
 
 #[derive(
@@ -124,24 +123,6 @@ define_settings_group!(EditorSettings, settings: [
         private: false,
         toml_path: "agents.warp_agent.other.open_conversation_layout_preference",
         description: "Whether to open agent conversations in a new tab or a split pane.",
-    },
-    open_working_dir_in_editor_enabled: OpenWorkingDirInEditorEnabled {
-        type: bool,
-        default: false,
-        supported_platforms: SupportedPlatforms::ALL,
-        sync_to_cloud: SyncToCloud::Globally(RespectUserSyncSetting::Yes),
-        private: false,
-        toml_path: "code.editor.open_working_dir_in_editor_enabled",
-        description: "Show a button next to the working-directory chip that opens the terminal's cwd in the selected editor.",
-    },
-    open_working_dir_editor: OpenWorkingDirEditor {
-        type: WorkingDirEditor,
-        default: WorkingDirEditor::VsCode,
-        supported_platforms: SupportedPlatforms::ALL,
-        sync_to_cloud: SyncToCloud::Globally(RespectUserSyncSetting::Yes),
-        private: false,
-        toml_path: "code.editor.open_working_dir_editor",
-        description: "Editor launched by the open-working-directory chip button.",
     },
 ]);
 

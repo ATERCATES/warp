@@ -54,7 +54,9 @@ use crate::terminal::model_events::ModelEventDispatcher;
 use crate::terminal::view::ambient_agent::AmbientAgentViewModel;
 use crate::ui_components::blended_colors;
 use crate::ui_components::icons::Icon;
+use crate::terminal::view::TerminalAction;
 use crate::util::bindings::keybinding_name_to_display_string;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::util::truncation::truncate_from_beginning;
 use crate::view_components::action_button::{ActionButtonTheme, NakedTheme};
 use crate::view_components::{FeaturePopup, NewFeaturePopupEvent, NewFeaturePopupLabel};
@@ -385,6 +387,7 @@ pub enum DisplayChipKind {
     GitDiffStats {
         line_changes_info: Option<GitLineChanges>,
     },
+    OpenInEditorButton(WorkingDirEditor),
 }
 
 impl DisplayChipKind {
@@ -400,7 +403,8 @@ impl DisplayChipKind {
             | DisplayChipKind::Subshell
             | DisplayChipKind::VirtualEnvironment
             | DisplayChipKind::CondaEnvironment
-            | DisplayChipKind::AgentPlanAndTodoList { .. } => false,
+            | DisplayChipKind::AgentPlanAndTodoList { .. }
+            | DisplayChipKind::OpenInEditorButton(_) => false,
         }
     }
 }
@@ -762,6 +766,7 @@ impl DisplayChip {
             ContextChipKind::Subshell => DisplayChipKind::Subshell,
             ContextChipKind::VirtualEnvironment => DisplayChipKind::VirtualEnvironment,
             ContextChipKind::CondaEnvironment => DisplayChipKind::CondaEnvironment,
+            ContextChipKind::OpenInEditorButton(editor) => DisplayChipKind::OpenInEditorButton(editor),
             ContextChipKind::NodeVersion => {
                 let current_version = chip_result.value.as_ref().map(|v| v.to_string());
                 let model_events = &config.model_events;
@@ -956,7 +961,8 @@ impl DisplayChip {
             | DisplayChipKind::CondaEnvironment
             | DisplayChipKind::NodeVersion { .. }
             | DisplayChipKind::AgentPlanAndTodoList { .. }
-            | DisplayChipKind::GithubPullRequest => {}
+            | DisplayChipKind::GithubPullRequest
+            | DisplayChipKind::OpenInEditorButton(_) => {}
         }
         false
     }
@@ -1174,6 +1180,57 @@ impl DisplayChip {
                         url.clone(),
                     ));
                 }
+            })
+            .with_cursor(Cursor::PointingHand)
+            .finish()
+    }
+
+    fn open_in_editor_button_chip(
+        &self,
+        editor: WorkingDirEditor,
+        app: &AppContext,
+    ) -> Box<dyn Element> {
+        let appearance = Appearance::as_ref(app);
+        let font_color = if self.is_in_agent_view {
+            agent_view_chip_color(appearance)
+        } else {
+            blended_colors::text_sub(appearance.theme(), appearance.theme().background())
+        };
+        let chip_text = format!("Open in {}", editor.display_name());
+        let tooltip_text = format!("Open working directory in {}", editor.display_name());
+        let is_in_agent_view = self.is_in_agent_view;
+        let is_interactive =
+            !self.is_shared_session_viewer && !self.is_cli_agent_session_active(app);
+
+        let hover = Hoverable::new(self.mouse_state.clone(), move |state| {
+            let mut config = UdiChipConfig::new_with_icon(editor.icon(), font_color, chip_text.clone())
+                .with_hovered(state.is_hovered() && is_interactive);
+            if is_in_agent_view {
+                config = config.for_agent_view();
+            }
+            let chip_element = render_udi_chip(config, appearance);
+
+            let mut stack = Stack::new().with_child(chip_element);
+            if state.is_hovered() && is_interactive {
+                let tool_tip = appearance
+                    .ui_builder()
+                    .tool_tip(tooltip_text.clone())
+                    .build()
+                    .finish();
+                stack.add_positioned_overlay_child(tool_tip, udi_tooltip_positioning());
+            }
+            stack.finish()
+        });
+
+        if !is_interactive {
+            return hover.finish();
+        }
+
+        hover
+            .on_click(move |ctx, _app, _position| {
+                ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInEditor(
+                    editor,
+                ));
             })
             .with_cursor(Cursor::PointingHand)
             .finish()
@@ -1567,6 +1624,9 @@ impl DisplayChip {
             DisplayChipKind::GitDiffStats { line_changes_info } => {
                 self.git_diff_stats_chip(line_changes_info, app)
             }
+            DisplayChipKind::OpenInEditorButton(editor) => {
+                Some(self.open_in_editor_button_chip(*editor, app))
+            }
             _ => {
                 let mut text = Text::new_inline(String::new(), font_family, font_size)
                     .with_line_height_ratio(appearance.line_height_ratio());
@@ -1657,7 +1717,8 @@ impl TypedActionView for DisplayChip {
                 | DisplayChipKind::AgentPlanAndTodoList { .. }
                 | DisplayChipKind::Text
                 | DisplayChipKind::GithubPullRequest
-                | DisplayChipKind::GitDiffStats { .. } => {}
+                | DisplayChipKind::GitDiffStats { .. }
+                | DisplayChipKind::OpenInEditorButton(_) => {}
                 DisplayChipKind::NodeVersion { popup_open, .. } => {
                     *popup_open = false;
                     ctx.notify();
