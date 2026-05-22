@@ -5,6 +5,7 @@ mod mac;
 pub mod settings;
 #[cfg(target_os = "windows")]
 mod windows;
+pub mod working_dir_editor;
 
 use std::path::PathBuf;
 

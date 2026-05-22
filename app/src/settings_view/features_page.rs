@@ -103,6 +103,7 @@ use crate::user_config::{WarpConfig, WarpConfigUpdateEvent};
 use crate::util::bindings::{
     keybinding_name_to_display_string, reset_keybinding_to_default, set_custom_keybinding,
 };
+use crate::util::file::external_editor::EditorSettings;
 use crate::view_components::{Dropdown, DropdownItem, FilterableDropdown};
 use crate::workspace::tab_settings::{NewTabPlacement, TabSettings, TabSettingsChangedEvent};
 use crate::workspace::WorkspaceAction;
@@ -2451,8 +2452,7 @@ impl FeaturesPageView {
         #[cfg(feature = "local_fs")]
         {
             if !FeatureFlag::OpenWarpNewSettingsModes.is_enabled() {
-                let external_editor_settings =
-                    crate::util::file::external_editor::EditorSettings::as_ref(ctx);
+                let external_editor_settings = EditorSettings::as_ref(ctx);
                 if external_editor_settings
                     .open_file_editor
                     .is_supported_on_current_platform()

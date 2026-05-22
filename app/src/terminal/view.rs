@@ -517,6 +517,7 @@ use crate::util::bindings::{
 };
 use crate::util::clipboard::clipboard_content_with_escaped_paths;
 use crate::util::color::darken;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 #[cfg(feature = "local_fs")]
 use crate::util::file::external_editor::{settings::EditorLayout, EditorSettings};
 #[cfg(feature = "local_fs")]
@@ -22261,6 +22262,54 @@ impl TerminalView {
         }
     }
 
+    pub fn active_ssh_host(&self, ctx: &AppContext) -> Option<&str> {
+        if self.active_session_is_local(ctx) != Some(false) {
+            return None;
+        }
+        self.warpify_state.last_warpified_ssh_host()
+    }
+
+    fn open_working_dir_in_editor(
+        &mut self,
+        editor: WorkingDirEditor,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        let bin = editor.command();
+        let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
+            command::blocking::Command::new(bin)
+                .arg(&pwd)
+                .spawn()
+                .map_err(|err| (err, format!("{bin} {pwd}")))
+        } else {
+            let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
+                self.show_error_toast(
+                    "Cannot detect remote SSH host. Warpify the SSH session first.".to_owned(),
+                    ctx,
+                );
+                return;
+            };
+            let Some(pwd) = self.pwd() else {
+                self.show_error_toast(
+                    "Cannot detect remote working directory.".to_owned(),
+                    ctx,
+                );
+                return;
+            };
+            let args = editor.ssh_remote_args(&host, &pwd);
+            command::blocking::Command::new(bin)
+                .args(&args)
+                .spawn()
+                .map_err(|err| (err, format!("{bin} {args:?}")))
+        };
+        if let Err((err, cmd)) = spawn_result {
+            log::warn!("Failed to launch `{cmd}`: {err}");
+            self.show_error_toast(
+                format!("Could not launch {}: {err}", editor.display_name()),
+                ctx,
+            );
+        }
+    }
+
     pub fn shell_launch_data_if_local(&self, ctx: &AppContext) -> Option<ShellLaunchData> {
         if !FeatureFlag::ShellSelector.is_enabled() {
             return None;
@@ -25362,6 +25411,7 @@ impl TypedActionView for TerminalView {
             | StartNewAgentConversation
             | ToggleConversationDetailsPanel
             | CancelAmbientAgentTask
+            | OpenWorkingDirInEditor(..)
             | OpenInlineHistoryMenu
             | OpenModelSelector
             | ResolvePromptSuggestion(..)
@@ -26405,6 +26455,9 @@ impl TypedActionView for TerminalView {
                     });
                 }
                 ctx.notify();
+            }
+            OpenWorkingDirInEditor(editor) => {
+                self.open_working_dir_in_editor(*editor, ctx);
             }
             ToggleUsageFooter => {
                 self.toggle_usage_footer(ctx);

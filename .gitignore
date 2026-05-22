@@ -69,4 +69,5 @@ __pycache__/
 
 # Project notes
 .note/
-.worktrees
+# Local git worktrees (used by superpowers subagent flows)
+.worktrees/
