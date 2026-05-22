@@ -45,7 +45,6 @@ pub enum RemoteSessionsPanelAction {
     AttachSession { key: String, name: String },
     KillSession { key: String, name: String },
     OpenAddHostSettings,
-    OpenEditHostSettings,
     RequestRemoveHost { key: String },
     ConfirmRemoveHost,
     CancelRemoveHost,
@@ -70,7 +69,6 @@ struct StateHandles {
     host_rows: std::collections::HashMap<String, MouseStateHandle>,
     connect_buttons: std::collections::HashMap<String, MouseStateHandle>,
     disconnect_buttons: std::collections::HashMap<String, MouseStateHandle>,
-    edit_buttons: std::collections::HashMap<String, MouseStateHandle>,
     remove_buttons: std::collections::HashMap<String, MouseStateHandle>,
     session_rows: std::collections::HashMap<String, MouseStateHandle>,
     kill_buttons: std::collections::HashMap<String, MouseStateHandle>,
@@ -169,9 +167,6 @@ impl RemoteSessionsPanelView {
             .disconnect_buttons
             .retain(|k, _| live_host_keys.contains(k));
         self.state_handles
-            .edit_buttons
-            .retain(|k, _| live_host_keys.contains(k));
-        self.state_handles
             .remove_buttons
             .retain(|k, _| live_host_keys.contains(k));
         self.state_handles
@@ -197,10 +192,6 @@ impl RemoteSessionsPanelView {
                 .or_default();
             self.state_handles
                 .disconnect_buttons
-                .entry(key.clone())
-                .or_default();
-            self.state_handles
-                .edit_buttons
                 .entry(key.clone())
                 .or_default();
             self.state_handles
@@ -327,11 +318,6 @@ impl TypedActionView for RemoteSessionsPanelView {
                     crate::settings_view::SettingsSection::RemoteHosts,
                 ));
             }
-            RemoteSessionsPanelAction::OpenEditHostSettings => {
-                ctx.dispatch_typed_action(&crate::workspace::WorkspaceAction::ShowSettingsPage(
-                    crate::settings_view::SettingsSection::RemoteHosts,
-                ));
-            }
             RemoteSessionsPanelAction::DisconnectHost { key } => {
                 let key = key.clone();
                 self.model.update(ctx, |model, ctx| {
@@ -389,7 +375,6 @@ impl View for RemoteSessionsPanelView {
             let host_states_clone = self.state_handles.host_rows.clone();
             let connect_states_clone = self.state_handles.connect_buttons.clone();
             let disconnect_states_clone = self.state_handles.disconnect_buttons.clone();
-            let edit_states_clone = self.state_handles.edit_buttons.clone();
             let remove_states_clone = self.state_handles.remove_buttons.clone();
             let confirm_remove_state = self.state_handles.confirm_remove_button.clone();
             let cancel_remove_state = self.state_handles.cancel_remove_button.clone();
@@ -426,10 +411,6 @@ impl View for RemoteSessionsPanelView {
                                         .get(key)
                                         .cloned()
                                         .unwrap_or_default();
-                                    let edit_state = edit_states_clone
-                                        .get(key)
-                                        .cloned()
-                                        .unwrap_or_default();
                                     let remove_state = remove_states_clone
                                         .get(key)
                                         .cloned()
@@ -444,7 +425,6 @@ impl View for RemoteSessionsPanelView {
                                             mouse_state,
                                             connect_button_state: connect_state,
                                             disconnect_button_state: disconnect_state,
-                                            edit_button_state: edit_state,
                                             remove_button_state: remove_state,
                                             confirm_remove_state: confirm_remove_state.clone(),
                                             cancel_remove_state: cancel_remove_state.clone(),

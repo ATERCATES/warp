@@ -1,7 +1,7 @@
 use crate::terminal::remote_sessions::types::RemoteTmuxSession;
 
 pub const SESSIONS_FORMAT: &str =
-    "#{session_id}|#{session_name}|#{session_created}|#{session_attached}|#{pane_pid}|#{pane_current_command}";
+    "#{session_id}|#{session_name}|#{session_created}|#{session_attached}|#{pane_current_command}";
 
 pub const CONTROL_SESSION_NAME: &str = "__warp_ctrl";
 
@@ -43,7 +43,6 @@ pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec
             }
             let created = parts.next()?.parse().ok()?;
             let attached = parts.next()?.parse().ok()?;
-            let _pid = parts.next();
             let cur = parts.next().unwrap_or("").to_string();
             Some(RemoteTmuxSession {
                 session_id: sid,

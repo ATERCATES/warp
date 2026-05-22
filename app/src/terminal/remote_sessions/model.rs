@@ -45,6 +45,7 @@ impl RemoteSessionsModel {
     }
 
     fn new() -> Self {
+        sweep_stale_sockets();
         Self {
             hosts: HashMap::new(),
             connections: HashMap::new(),
@@ -289,4 +290,19 @@ pub fn socket_path_for(key: &str) -> PathBuf {
     path.push("warp-rs");
     path.push(format!("{short}.sock"));
     path
+}
+
+fn sweep_stale_sockets() {
+    let mut dir = std::env::temp_dir();
+    dir.push("warp-rs");
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("sock") {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }

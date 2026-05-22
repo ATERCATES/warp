@@ -78,7 +78,9 @@ impl HeaderToolbarItemKind {
             }
             Self::CodeReview => cfg!(feature = "local_fs"),
             Self::NotificationsMailbox => FeatureFlag::HOANotifications.is_enabled(),
-            Self::RemoteSessions => FeatureFlag::RemoteSessions.is_enabled(),
+            Self::RemoteSessions => {
+                cfg!(feature = "remote_sessions") && FeatureFlag::RemoteSessions.is_enabled()
+            }
         }
     }
 

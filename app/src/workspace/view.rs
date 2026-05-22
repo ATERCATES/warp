@@ -6535,26 +6535,27 @@ impl Workspace {
             wv = version_q,
             pv = protocol_v
         );
+        let control_path = format!("ControlPath={}", socket.display());
         let mut parts: Vec<String> = vec![
             "ssh".into(),
             "-tt".into(),
             "-o".into(),
             "ControlMaster=no".into(),
             "-o".into(),
-            format!("ControlPath={}", socket.display()),
+            shell_words::quote(&control_path).into_owned(),
             "-p".into(),
-            host.port.to_string(),
+            shell_words::quote(&host.port.to_string()).into_owned(),
         ];
         if let Some(id) = &host.identity_file {
             if !id.is_empty() {
                 parts.push("-i".into());
-                parts.push(id.clone());
+                parts.push(shell_words::quote(id).into_owned());
             }
         }
         for opt in &host.ssh_options {
-            parts.push(opt.clone());
+            parts.push(shell_words::quote(opt).into_owned());
         }
-        parts.push(host.host.clone());
+        parts.push(shell_words::quote(&host.host).into_owned());
         parts.push(shell_words::quote(&remote_script).into_owned());
         let command = format!("exec {}", parts.join(" "));
         Some(TabConfig {

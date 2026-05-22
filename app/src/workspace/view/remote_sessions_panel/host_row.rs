@@ -35,7 +35,6 @@ pub struct HostRowProps<'a> {
     pub mouse_state: MouseStateHandle,
     pub connect_button_state: MouseStateHandle,
     pub disconnect_button_state: MouseStateHandle,
-    pub edit_button_state: MouseStateHandle,
     pub remove_button_state: MouseStateHandle,
     pub confirm_remove_state: MouseStateHandle,
     pub cancel_remove_state: MouseStateHandle,
@@ -50,7 +49,6 @@ pub fn render_host_row(props: HostRowProps<'_>, app: &AppContext) -> Box<dyn Ele
         mouse_state,
         connect_button_state,
         disconnect_button_state,
-        edit_button_state,
         remove_button_state,
         confirm_remove_state,
         cancel_remove_state,
@@ -117,7 +115,6 @@ pub fn render_host_row(props: HostRowProps<'_>, app: &AppContext) -> Box<dyn Ele
                 &key,
                 connect_button_state.clone(),
                 disconnect_button_state.clone(),
-                edit_button_state.clone(),
                 remove_button_state.clone(),
                 mouse_state.is_hovered(),
                 appearance,
@@ -230,7 +227,6 @@ fn render_actions_row(
     key: &str,
     connect_button_state: MouseStateHandle,
     disconnect_button_state: MouseStateHandle,
-    edit_button_state: MouseStateHandle,
     remove_button_state: MouseStateHandle,
     is_row_hovered: bool,
     appearance: &Appearance,
@@ -244,17 +240,11 @@ fn render_actions_row(
         HostStatus::Connected => {
             if is_row_hovered {
                 row = row.with_child(render_icon_action(
-                    Icon::Cancelled,
+                    Icon::LogOut,
                     RemoteSessionsPanelAction::DisconnectHost {
                         key: key.to_string(),
                     },
                     disconnect_button_state,
-                    appearance,
-                ));
-                row = row.with_child(render_icon_action(
-                    Icon::Edit,
-                    RemoteSessionsPanelAction::OpenEditHostSettings,
-                    edit_button_state,
                     appearance,
                 ));
                 row = row.with_child(render_icon_action(
@@ -284,12 +274,6 @@ fn render_actions_row(
         }
         HostStatus::Disconnected => {
             if is_row_hovered {
-                row = row.with_child(render_icon_action(
-                    Icon::Edit,
-                    RemoteSessionsPanelAction::OpenEditHostSettings,
-                    edit_button_state,
-                    appearance,
-                ));
                 row = row.with_child(render_icon_action(
                     Icon::Trash,
                     RemoteSessionsPanelAction::RequestRemoveHost {
@@ -334,12 +318,6 @@ fn render_actions_row(
             ));
             if is_row_hovered {
                 row = row.with_child(render_icon_action(
-                    Icon::Edit,
-                    RemoteSessionsPanelAction::OpenEditHostSettings,
-                    edit_button_state,
-                    appearance,
-                ));
-                row = row.with_child(render_icon_action(
                     Icon::Trash,
                     RemoteSessionsPanelAction::RequestRemoveHost {
                         key: key.to_string(),
@@ -361,7 +339,6 @@ fn render_actions_row(
                 ));
             }
             let _ = connect_button_state;
-            let _ = edit_button_state;
         }
     }
     let _ = expanded;

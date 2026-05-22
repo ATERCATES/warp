@@ -22,9 +22,9 @@ use crate::terminal::remote_sessions::commands::{
 use crate::terminal::remote_sessions::probe::classify_ssh_error;
 use crate::terminal::remote_sessions::types::{HostError, RemoteTmuxSession};
 
-const RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
 const MASTER_PROBE_ATTEMPTS: u32 = 20;
 const MASTER_PROBE_DELAY: Duration = Duration::from_millis(250);
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct ConnectionConfig {
     pub heartbeat_interval: Duration,
@@ -55,6 +55,7 @@ type PendingQueue = Arc<Mutex<VecDeque<Pending>>>;
 pub struct RemoteHostConnection {
     pub local_host_key: String,
     pub socket_path: PathBuf,
+    host: String,
     child: Arc<Mutex<Option<Child>>>,
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     pending: PendingQueue,
@@ -129,6 +130,7 @@ impl RemoteHostConnection {
         Ok(Self {
             local_host_key: host.local_host_key.clone(),
             socket_path,
+            host: host.host.clone(),
             child: Arc::new(Mutex::new(Some(child))),
             stdin: stdin_holder,
             pending,
@@ -148,10 +150,10 @@ impl RemoteHostConnection {
                 .as_mut()
                 .ok_or_else(|| HostError::Other("stdin closed".into()))?;
             pending.push_back(Pending::UserCommand(tx));
-            stdin
-                .write_all(line.as_bytes())
-                .await
-                .map_err(|e| HostError::Other(e.to_string()))?;
+            if let Err(e) = stdin.write_all(line.as_bytes()).await {
+                pending.pop_back();
+                return Err(HostError::Other(e.to_string()));
+            }
         }
         match rx.with_timeout(RESPONSE_TIMEOUT).await {
             Ok(Ok(Ok(output))) => Ok(output),
@@ -166,7 +168,29 @@ impl RemoteHostConnection {
             let _ = child.kill();
         }
         self.stdin.lock().await.take();
+        let _ = stop_master(&self.host, &self.socket_path).await;
     }
+}
+
+async fn stop_master(host: &str, socket_path: &Path) -> std::io::Result<()> {
+    if !socket_path.exists() {
+        return Ok(());
+    }
+    let mut exit = Command::new("ssh");
+    exit.arg("-O")
+        .arg("exit")
+        .arg("-o")
+        .arg(format!("ControlPath={}", socket_path.display()))
+        .arg(host)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let _ = exit.status().await;
+    if socket_path.exists() {
+        let _ = std::fs::remove_file(socket_path);
+    }
+    Ok(())
 }
 
 fn spawn_reader_task(
