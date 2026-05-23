@@ -6605,20 +6605,7 @@ impl Workspace {
                 .into_iter()
                 .next()
             {
-                let rb_host = local_host_key.to_string();
-                let rb_name = session_name.to_string();
-                ctx.spawn(
-                    async move {
-                        warpui::r#async::Timer::after(std::time::Duration::from_millis(1500))
-                            .await;
-                    },
-                    move |_me, _, ctx| {
-                        use crate::terminal::remote_sessions::RemoteSessionsModel;
-                        RemoteSessionsModel::handle(ctx).update(ctx, |m, ctx| {
-                            m.force_rebootstrap(&rb_host, rb_name.clone(), ctx)
-                        });
-                    },
-                );
+                let _ = (local_host_key, session_name);
                 let host_key = local_host_key.to_string();
                 let name = session_name.to_string();
                 ctx.subscribe_to_view(&terminal_view, move |_me, tv_handle, event, ctx| {

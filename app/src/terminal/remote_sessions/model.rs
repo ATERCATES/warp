@@ -11,7 +11,7 @@ use warpui::{AppContext, Entity, ModelContext, ModelHandle, ModelSpawner, Single
 
 use crate::settings::remote_hosts::{RemoteHost, RemoteSessionsSettings};
 use crate::terminal::remote_sessions::commands::{
-    force_rebootstrap_cmd, is_safe_session_name, kill_session_cmd, new_session_cmd,
+    force_rebootstrap_cmds, is_safe_session_name, kill_session_cmd, new_session_cmd,
 };
 use crate::terminal::remote_sessions::connection::{
     ConnectionConfig, ConnectionEvent, RemoteHostConnection,
@@ -216,11 +216,15 @@ impl RemoteSessionsModel {
         let Some(conn) = self.connections.get(key).cloned() else {
             return;
         };
-        let cmd = force_rebootstrap_cmd(&name);
+        let cmds = force_rebootstrap_cmds(&name);
         ctx.spawn(
             async move {
-                if let Err(e) = conn.send_command(cmd).await {
-                    log::warn!("force_rebootstrap failed for {name}: {:?}", e);
+                if let Err(e) = conn.send_command(cmds.write_script).await {
+                    log::warn!("force_rebootstrap write failed for {name}: {:?}", e);
+                    return;
+                }
+                if let Err(e) = conn.send_command(cmds.source_script).await {
+                    log::warn!("force_rebootstrap source failed for {name}: {:?}", e);
                 }
             },
             |_, _, _| {},

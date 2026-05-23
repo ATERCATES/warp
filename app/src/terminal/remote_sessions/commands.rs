@@ -1,3 +1,6 @@
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
+
 use crate::terminal::remote_sessions::types::RemoteTmuxSession;
 
 pub const SESSIONS_FORMAT: &str =
@@ -35,11 +38,44 @@ pub fn is_safe_session_name(name: &str) -> bool {
         })
 }
 
-pub fn force_rebootstrap_cmd(session_name: &str) -> String {
-    format!(
-        "send-keys -t {} C-u ' unset WARP_BOOTSTRAPPED; [ -f ~/.zshrc ] && source ~/.zshrc; clear' Enter",
-        shell_escape(session_name)
-    )
+pub struct ForceRebootstrapCmds {
+    pub write_script: String,
+    pub source_script: String,
+}
+
+pub fn force_rebootstrap_cmds(session_name: &str) -> ForceRebootstrapCmds {
+    let script = "[ -n \"$WARP_BOOTSTRAPPED\" ] && printf '\\e]9278;f;{\"hook\":\"SourcedRcFileForWarp\",\"value\":{\"shell\":\"zsh\",\"uname\":\"Linux\"}}\\a'";
+    let b64 = BASE64_STANDARD.encode(script);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let path = format!("/tmp/warp-rb-{nonce:x}.sh");
+    let payload = format!(" clear; stty -echo; . {path}; rm -f {path}; stty echo");
+    ForceRebootstrapCmds {
+        write_script: format!("run-shell \"printf %s {b64} | base64 -d > {path}\""),
+        source_script: format!(
+            "send-keys -t {} C-u {} Enter",
+            shell_escape(session_name),
+            tmux_quote(&payload)
+        ),
+    }
+}
+
+fn tmux_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' | '\\' | '$' | '`' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec<RemoteTmuxSession> {
