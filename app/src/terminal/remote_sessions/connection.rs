@@ -84,8 +84,14 @@ impl RemoteHostConnection {
             .kill_on_drop(true);
 
         let mut child = cmd.spawn().map_err(|e| HostError::Other(e.to_string()))?;
-        let stdin = child.stdin.take().ok_or(HostError::TmuxFailedToStart(String::new()))?;
-        let stdout = child.stdout.take().ok_or(HostError::TmuxFailedToStart(String::new()))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or(HostError::TmuxFailedToStart(String::new()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or(HostError::TmuxFailedToStart(String::new()))?;
 
         let pending: PendingQueue = Arc::new(Mutex::new(VecDeque::new()));
         let stdin_holder = Arc::new(Mutex::new(Some(stdin)));
@@ -396,7 +402,9 @@ async fn ensure_master(host: &RemoteHost, socket_path: &Path) -> Result<(), Host
     let detail = drain_stderr(&mut master_child).await;
     let _ = master_child.kill();
     if detail.is_empty() {
-        Err(HostError::HostUnreachable("ControlMaster handshake timed out".into()))
+        Err(HostError::HostUnreachable(
+            "ControlMaster handshake timed out".into(),
+        ))
     } else {
         Err(classify_ssh_error(&detail))
     }

@@ -9,7 +9,8 @@ use crate::settings::remote_hosts::RemoteHost;
 use crate::terminal::remote_sessions::ssh_args::target_args;
 use crate::terminal::remote_sessions::types::{HostCapabilities, HostError};
 
-const PROBE_SCRIPT: &str = include_str!("../../../assets/bundled/ssh/bash_zsh/probe_remote_host.sh");
+const PROBE_SCRIPT: &str =
+    include_str!("../../../assets/bundled/ssh/bash_zsh/probe_remote_host.sh");
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 const BEGIN_MARKER: &str = "__WARP_REMOTE_SESSIONS_PROBE_BEGIN__";
 const END_MARKER: &str = "__WARP_REMOTE_SESSIONS_PROBE_END__";

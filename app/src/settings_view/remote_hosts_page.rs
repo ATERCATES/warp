@@ -330,11 +330,7 @@ impl RemoteHostsPageView {
         ctx.notify();
     }
 
-    fn handle_heartbeat_editor_event(
-        &mut self,
-        event: &EditorEvent,
-        ctx: &mut ViewContext<Self>,
-    ) {
+    fn handle_heartbeat_editor_event(&mut self, event: &EditorEvent, ctx: &mut ViewContext<Self>) {
         match event {
             EditorEvent::Enter => {
                 let text = self.heartbeat_editor.as_ref(ctx).buffer_text(ctx);
@@ -463,9 +459,7 @@ impl SettingsWidget for RemoteHostsWidget {
                                     appearance.ui_font_family(),
                                     DESCRIPTION_FONT_SIZE,
                                 )
-                                .with_color(
-                                    theme.sub_text_color(theme.background()).into(),
-                                )
+                                .with_color(theme.sub_text_color(theme.background()).into())
                                 .finish(),
                             )
                             .with_margin_top(6.)
@@ -521,8 +515,7 @@ impl SettingsWidget for RemoteHostsWidget {
                     .get(idx)
                     .map(|s| s.remove.clone())
                     .unwrap_or_default();
-                let is_confirming =
-                    pending_remove.as_deref() == Some(host.local_host_key.as_str());
+                let is_confirming = pending_remove.as_deref() == Some(host.local_host_key.as_str());
                 hosts_list.add_child(render_host_row(
                     host,
                     edit_state,
@@ -538,7 +531,11 @@ impl SettingsWidget for RemoteHostsWidget {
         let advanced_section = render_advanced_section(view, appearance);
 
         Flex::column()
-            .with_child(Container::new(header_row).with_padding_bottom(HEADER_PADDING).finish())
+            .with_child(
+                Container::new(header_row)
+                    .with_padding_bottom(HEADER_PADDING)
+                    .finish(),
+            )
             .with_child(
                 Container::new(hosts_list.finish())
                     .with_padding_bottom(SECTION_GAP)
@@ -711,9 +708,13 @@ fn render_advanced_section(
     let theme = appearance.theme();
 
     let header = Container::new(
-        Text::new_inline(ADVANCED_TITLE, appearance.ui_font_family(), SECTION_FONT_SIZE)
-            .with_color(theme.active_ui_text_color().into())
-            .finish(),
+        Text::new_inline(
+            ADVANCED_TITLE,
+            appearance.ui_font_family(),
+            SECTION_FONT_SIZE,
+        )
+        .with_color(theme.active_ui_text_color().into())
+        .finish(),
     )
     .with_margin_bottom(8.)
     .finish();
@@ -728,7 +729,10 @@ fn render_advanced_section(
         appearance,
     );
 
-    Flex::column().with_child(header).with_child(heartbeat_row).finish()
+    Flex::column()
+        .with_child(header)
+        .with_child(heartbeat_row)
+        .finish()
 }
 
 fn render_numeric_row(
@@ -887,9 +891,24 @@ impl HostFormView {
     }
 
     fn build_submission(&self, ctx: &ViewContext<Self>) -> Result<HostSubmission, String> {
-        let alias = self.alias_editor.as_ref(ctx).buffer_text(ctx).trim().to_string();
-        let host = self.host_editor.as_ref(ctx).buffer_text(ctx).trim().to_string();
-        let port_text = self.port_editor.as_ref(ctx).buffer_text(ctx).trim().to_string();
+        let alias = self
+            .alias_editor
+            .as_ref(ctx)
+            .buffer_text(ctx)
+            .trim()
+            .to_string();
+        let host = self
+            .host_editor
+            .as_ref(ctx)
+            .buffer_text(ctx)
+            .trim()
+            .to_string();
+        let port_text = self
+            .port_editor
+            .as_ref(ctx)
+            .buffer_text(ctx)
+            .trim()
+            .to_string();
         let identity = self
             .identity_editor
             .as_ref(ctx)
@@ -917,7 +936,11 @@ impl HostFormView {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let identity_file = if identity.is_empty() { None } else { Some(identity) };
+        let identity_file = if identity.is_empty() {
+            None
+        } else {
+            Some(identity)
+        };
         Ok(HostSubmission {
             alias,
             host,
@@ -1160,9 +1183,13 @@ impl View for HostFormView {
 
         let feedback_element: Box<dyn Element> = if let Some(msg) = &self.validation_error {
             Container::new(
-                Text::new(msg.clone(), appearance.ui_font_family(), FIELD_LABEL_FONT_SIZE)
-                    .with_color(theme.ui_error_color().into())
-                    .finish(),
+                Text::new(
+                    msg.clone(),
+                    appearance.ui_font_family(),
+                    FIELD_LABEL_FONT_SIZE,
+                )
+                .with_color(theme.ui_error_color().into())
+                .finish(),
             )
             .with_margin_bottom(8.)
             .finish()
@@ -1211,11 +1238,7 @@ impl View for HostFormView {
             .with_child(test_button)
             .with_child(Shrinkable::new(1., Empty::new().finish()).finish())
             .with_child(cancel_button)
-            .with_child(
-                Container::new(save_button)
-                    .with_margin_left(12.)
-                    .finish(),
-            )
+            .with_child(Container::new(save_button).with_margin_left(12.).finish())
             .finish();
 
         Flex::column()

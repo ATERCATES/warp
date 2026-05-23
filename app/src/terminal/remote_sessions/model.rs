@@ -184,7 +184,12 @@ impl RemoteSessionsModel {
         command: Option<String>,
         ctx: &mut ModelContext<Self>,
     ) {
-        self.run_session_cmd(key, new_session_cmd(&name, command.as_deref()), "create_session", ctx);
+        self.run_session_cmd(
+            key,
+            new_session_cmd(&name, command.as_deref()),
+            "create_session",
+            ctx,
+        );
     }
 
     pub fn kill_session(&mut self, key: &str, name: String, ctx: &mut ModelContext<Self>) {

@@ -582,9 +582,7 @@ pub fn available_chips() -> Vec<ContextChipKind> {
         ContextChipKind::SvnBranch,
         ContextChipKind::SvnDirtyItems,
     ]);
-    chips.extend(
-        enum_iterator::all::<WorkingDirEditor>().map(ContextChipKind::OpenInEditorButton),
-    );
+    chips.extend(enum_iterator::all::<WorkingDirEditor>().map(ContextChipKind::OpenInEditorButton));
     chips
 }
 

@@ -30,7 +30,6 @@ use crate::code_review::telemetry_event::CodeReviewPaneEntrypoint;
 use crate::server::ids::SyncId;
 use crate::server::telemetry::{AgentModeRewindEntrypoint, PaletteSource, ToggleBlockFilterSource};
 use crate::terminal::available_shells::AvailableShell;
-use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::terminal::block_list_element::{
     BlockHoverAction, BlockListMenuSource, BlockSelectAction, BlockTextSelectAction,
 };
@@ -46,6 +45,7 @@ use crate::terminal::ssh::error::SshErrorBlockAction;
 use crate::terminal::view::inline_banner::AgentModeSetupSpeedbumpBannerAction;
 use crate::terminal::view::passive_suggestions::PromptSuggestionResolution;
 use crate::terminal::view::RichContentSecretTooltipInfo;
+use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::workflows::workflow::Workflow;
 
 /// Version of the agent onboarding flow (non-legacy).

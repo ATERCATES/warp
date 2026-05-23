@@ -137,7 +137,11 @@ impl<R: AsyncRead + Unpin> CcStream<R> {
             if let Some(rest) = trimmed.strip_prefix("%exit") {
                 let reason = rest.trim().to_string();
                 return Some(ControlEvent::Exit {
-                    reason: if reason.is_empty() { None } else { Some(reason) },
+                    reason: if reason.is_empty() {
+                        None
+                    } else {
+                        Some(reason)
+                    },
                 });
             }
             if let Some(rest) = trimmed.strip_prefix("%config-error ") {

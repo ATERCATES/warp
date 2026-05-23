@@ -88,8 +88,7 @@ use crate::workspace::view::{
     TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME, TOGGLE_NOTIFICATION_MAILBOX_BINDING_NAME,
     TOGGLE_PROJECT_EXPLORER_BINDING_NAME, TOGGLE_REMOTE_SESSIONS_PANEL_BINDING_NAME,
     TOGGLE_RIGHT_PANEL_BINDING_NAME, TOGGLE_TAB_CONFIGS_MENU_BINDING_NAME,
-    TOGGLE_VERTICAL_TABS_PANEL_BINDING_NAME,
-    TOGGLE_WARP_DRIVE_BINDING_NAME,
+    TOGGLE_VERTICAL_TABS_PANEL_BINDING_NAME, TOGGLE_WARP_DRIVE_BINDING_NAME,
 };
 
 pub fn init(app: &mut AppContext) {
@@ -745,8 +744,10 @@ pub fn init(app: &mut AppContext) {
         .with_key_binding(cmd_or_ctrl_shift("b")),
         EditableBinding::new(
             TOGGLE_REMOTE_SESSIONS_PANEL_BINDING_NAME,
-            BindingDescription::new("Toggle remote sessions panel")
-                .with_custom_description(bindings::MAC_MENUS_CONTEXT, "Toggle Remote Sessions Panel"),
+            BindingDescription::new("Toggle remote sessions panel").with_custom_description(
+                bindings::MAC_MENUS_CONTEXT,
+                "Toggle Remote Sessions Panel",
+            ),
             WorkspaceAction::ToggleRemoteSessionsPanel,
         )
         .with_context_predicate(id!("Workspace"))

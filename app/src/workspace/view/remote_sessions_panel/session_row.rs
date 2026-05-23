@@ -165,4 +165,3 @@ fn format_subtitle(current_command: &str, is_attached: bool, attached_count: u32
         format!("{trimmed}{suffix}")
     }
 }
-
