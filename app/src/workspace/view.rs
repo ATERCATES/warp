@@ -6605,33 +6605,18 @@ impl Workspace {
                 .into_iter()
                 .next()
             {
-                let tv_for_boot = terminal_view.clone();
+                let rb_host = local_host_key.to_string();
+                let rb_name = session_name.to_string();
                 ctx.spawn(
                     async move {
-                        warpui::r#async::Timer::after(std::time::Duration::from_millis(2000))
+                        warpui::r#async::Timer::after(std::time::Duration::from_millis(1500))
                             .await;
                     },
                     move |_me, _, ctx| {
-                        use crate::terminal::shell::ShellType;
-                        let in_tmux = tv_for_boot
-                            .as_ref(ctx)
-                            .model
-                            .lock()
-                            .tmux_control_mode_active();
-                        let bootstrapped = tv_for_boot
-                            .as_ref(ctx)
-                            .model
-                            .lock()
-                            .block_list()
-                            .is_bootstrapped();
-                        log::info!(
-                            "remote_attach bootstrap probe: in_tmux={in_tmux} bootstrapped={bootstrapped}"
-                        );
-                        if in_tmux && !bootstrapped {
-                            tv_for_boot.update(ctx, |tv, ctx| {
-                                tv.trigger_subshell_bootstrap(Some(ShellType::Zsh), false, ctx)
-                            });
-                        }
+                        use crate::terminal::remote_sessions::RemoteSessionsModel;
+                        RemoteSessionsModel::handle(ctx).update(ctx, |m, ctx| {
+                            m.force_rebootstrap(&rb_host, rb_name.clone(), ctx)
+                        });
                     },
                 );
                 let host_key = local_host_key.to_string();

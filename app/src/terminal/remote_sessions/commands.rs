@@ -35,6 +35,13 @@ pub fn is_safe_session_name(name: &str) -> bool {
         })
 }
 
+pub fn force_rebootstrap_cmd(session_name: &str) -> String {
+    format!(
+        "send-keys -t {} C-u ' unset WARP_BOOTSTRAPPED; [ -f ~/.zshrc ] && source ~/.zshrc; clear' Enter",
+        shell_escape(session_name)
+    )
+}
+
 pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec<RemoteTmuxSession> {
     lines
         .iter()
