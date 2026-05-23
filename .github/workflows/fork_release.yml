@@ -78,6 +78,16 @@ jobs:
         if: matrix.target_os == 'macos'
         run: ./script/install_cargo_bundle
 
+      - name: Install linuxdeploy (Linux)
+        # script/linux/bundle_appimage shells out to `linuxdeploy` directly.
+        # The repo provides an installer at script/linux/install_linuxdeploy
+        # that drops the AppImage tool into ~/.local/bin. Add that dir to
+        # the path so the bundle script can find it.
+        if: matrix.target_os == 'linux'
+        run: |
+          ./script/linux/install_linuxdeploy
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+
       - name: Build OSS bundle
         env:
           # script/macos/bundle skips codesign when these are unset; we
