@@ -39,11 +39,6 @@ impl RemoteAttachRegistry {
         self.by_session.remove(&session_id);
     }
 
-    pub fn forget_host(&mut self, local_host_key: &str, _ctx: &mut ModelContext<Self>) {
-        self.by_session
-            .retain(|_, info| info.local_host_key != local_host_key);
-    }
-
     pub fn lookup(&self, session_id: SessionId) -> Option<&RemoteAttachInfo> {
         self.by_session.get(&session_id)
     }

@@ -31,8 +31,7 @@ pub fn heartbeat_cmd() -> &'static str {
 pub fn is_safe_session_name(name: &str) -> bool {
     !name.is_empty()
         && name.chars().all(|c| {
-            !c.is_control()
-                && !matches!(c, ';' | '"' | '\'' | '\\' | '$' | '`' | '\n' | '\r')
+            !c.is_control() && !matches!(c, ';' | '"' | '\'' | '\\' | '$' | '`')
         })
 }
 

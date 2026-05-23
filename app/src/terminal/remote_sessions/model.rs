@@ -10,7 +10,9 @@ use warpui::r#async::executor::{Background, BackgroundTask};
 use warpui::{AppContext, Entity, ModelContext, ModelHandle, ModelSpawner, SingletonEntity};
 
 use crate::settings::remote_hosts::{RemoteHost, RemoteSessionsSettings};
-use crate::terminal::remote_sessions::commands::{kill_session_cmd, new_session_cmd};
+use crate::terminal::remote_sessions::commands::{
+    is_safe_session_name, kill_session_cmd, new_session_cmd,
+};
 use crate::terminal::remote_sessions::connection::{
     ConnectionConfig, ConnectionEvent, RemoteHostConnection,
 };
@@ -188,11 +190,13 @@ impl RemoteSessionsModel {
         command: Option<String>,
         ctx: &mut ModelContext<Self>,
     ) {
-        let conn = match self.connections.get(key).cloned() {
-            Some(c) => c,
-            None => return,
+        if !is_safe_session_name(&name) {
+            log::warn!("create_session rejected unsafe name: {name:?}");
+            return;
+        }
+        let Some(conn) = self.connections.get(key).cloned() else {
+            return;
         };
-        let _ = key;
         ctx.spawn(
             async move {
                 conn.send_command(new_session_cmd(&name, command.as_deref())).await
@@ -206,11 +210,13 @@ impl RemoteSessionsModel {
     }
 
     pub fn kill_session(&mut self, key: &str, name: String, ctx: &mut ModelContext<Self>) {
-        let conn = match self.connections.get(key).cloned() {
-            Some(c) => c,
-            None => return,
+        if !is_safe_session_name(&name) {
+            log::warn!("kill_session rejected unsafe name: {name:?}");
+            return;
+        }
+        let Some(conn) = self.connections.get(key).cloned() else {
+            return;
         };
-        let _ = key;
         ctx.spawn(
             async move { conn.send_command(kill_session_cmd(&name)).await },
             |_, result, _| {

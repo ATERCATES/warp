@@ -8714,7 +8714,7 @@ impl TerminalView {
     }
 
     /// Turns the active session into a bootstrapped subshell by writing the InitShell DCS hook
-    fn trigger_subshell_bootstrap(
+    pub(crate) fn trigger_subshell_bootstrap(
         &mut self,
         shell_type: Option<ShellType>,
         triggered_by_rc_file_snippet: bool,

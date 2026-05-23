@@ -6516,7 +6516,7 @@ impl Workspace {
             .find(|h| h.local_host_key == local_host_key)?;
         let socket = socket_path_for(local_host_key);
         let session_q = shell_words::quote(session_name).into_owned();
-        let remote_script = format!("exec tmux -Lwarp -CC new-session -A -s {}", session_q);
+        let remote_script = format!("exec tmux -Lwarp -CC new-session -A -D -s {}", session_q);
         let control_path = format!("ControlPath={}", socket.display());
         let mut parts: Vec<String> = vec![
             "ssh".into(),
@@ -6605,17 +6605,38 @@ impl Workspace {
                 .into_iter()
                 .next()
             {
+                let tv_for_boot = terminal_view.clone();
+                ctx.spawn(
+                    async move {
+                        warpui::r#async::Timer::after(std::time::Duration::from_millis(2000))
+                            .await;
+                    },
+                    move |_me, _, ctx| {
+                        use crate::terminal::shell::ShellType;
+                        let in_tmux = tv_for_boot
+                            .as_ref(ctx)
+                            .model
+                            .lock()
+                            .tmux_control_mode_active();
+                        let bootstrapped = tv_for_boot
+                            .as_ref(ctx)
+                            .model
+                            .lock()
+                            .block_list()
+                            .is_bootstrapped();
+                        log::info!(
+                            "remote_attach bootstrap probe: in_tmux={in_tmux} bootstrapped={bootstrapped}"
+                        );
+                        if in_tmux && !bootstrapped {
+                            tv_for_boot.update(ctx, |tv, ctx| {
+                                tv.trigger_subshell_bootstrap(Some(ShellType::Zsh), false, ctx)
+                            });
+                        }
+                    },
+                );
                 let host_key = local_host_key.to_string();
                 let name = session_name.to_string();
                 ctx.subscribe_to_view(&terminal_view, move |_me, tv_handle, event, ctx| {
-                    if let Some(session_id) = tv_handle.as_ref(ctx).active_block_session_id() {
-                        let info = RemoteAttachInfo {
-                            local_host_key: host_key.clone(),
-                            session_name: name.clone(),
-                        };
-                        RemoteAttachRegistry::handle(ctx)
-                            .update(ctx, |reg, ctx| reg.record_if_absent(session_id, info, ctx));
-                    }
                     if matches!(event, crate::terminal::view::Event::Exited) {
                         if let Some(session_id) = tv_handle.as_ref(ctx).active_block_session_id() {
                             RemoteAttachRegistry::handle(ctx).update(ctx, |reg, ctx| {
@@ -6628,6 +6649,15 @@ impl Workspace {
                                 session_name: name.clone(),
                             },
                         );
+                        return;
+                    }
+                    if let Some(session_id) = tv_handle.as_ref(ctx).active_block_session_id() {
+                        let info = RemoteAttachInfo {
+                            local_host_key: host_key.clone(),
+                            session_name: name.clone(),
+                        };
+                        RemoteAttachRegistry::handle(ctx)
+                            .update(ctx, |reg, ctx| reg.record_if_absent(session_id, info, ctx));
                     }
                 });
             }
