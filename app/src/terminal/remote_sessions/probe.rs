@@ -111,3 +111,7 @@ pub(super) fn classify_ssh_error(stderr_text: &str) -> HostError {
         HostError::Other(detail)
     }
 }
+
+#[cfg(test)]
+#[path = "probe_tests.rs"]
+mod tests;

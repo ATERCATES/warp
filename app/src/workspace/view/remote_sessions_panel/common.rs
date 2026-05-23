@@ -13,10 +13,10 @@ use super::view::RemoteSessionsPanelAction;
 pub(super) const VERTICAL_TABS_ICON_SIZE: f32 = 24.;
 pub(super) const ICON_WITH_STATUS_GAP: f32 = 8.;
 pub(super) const ROW_CORNER_RADIUS: f32 = 4.;
-pub(super) const ACTION_ICON_BOX: f32 = 22.;
 pub(super) const ACTION_ICON_SIZE: f32 = 12.;
 pub(super) const ACTION_GAP: f32 = 2.;
-pub(super) const ACTION_BUTTON_CORNER_RADIUS: f32 = 4.;
+const ACTION_ICON_BOX: f32 = 22.;
+const ACTION_BUTTON_CORNER_RADIUS: f32 = 4.;
 
 pub(super) fn render_icon_action(
     icon: Icon,

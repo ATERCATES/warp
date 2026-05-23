@@ -6541,7 +6541,7 @@ impl Workspace {
             "-o".into(),
             "ControlMaster=no".into(),
             "-o".into(),
-            format!("ControlPath={}", socket.display()),
+            shell_words::quote(&format!("ControlPath={}", socket.display())).into_owned(),
         ];
         parts.extend(target_args_shell_quoted(&host));
         parts.push(shell_words::quote(&remote_script).into_owned());
