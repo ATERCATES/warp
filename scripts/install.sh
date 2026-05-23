@@ -3,13 +3,18 @@
 #
 # Detects host OS / arch, fetches the matching artifact from the most recent
 # `fork-v*` GitHub Release, and installs it:
-#   - macOS  → ~/Applications/WarpOss.app  (Gatekeeper quarantine cleared)
-#   - Linux  → ~/.local/bin/warp-oss       + .desktop entry under ~/.local/share/applications
+#   - macOS Intel → ~/Applications/WarpOss.app  (Gatekeeper quarantine cleared)
+#   - Debian-like → apt install of the .deb       (preferred when dpkg present)
+#   - Other Linux → ~/.local/bin/warp-oss        + .desktop entry
 #
 # Usage:
 #   curl -sSf https://raw.githubusercontent.com/ATERCATES/warp/master/scripts/install.sh | bash
 #   bash scripts/install.sh --tag fork-v0.2.0
 #   bash scripts/install.sh --uninstall
+#
+# Env vars:
+#   WARP_FORK_REPO        — override the source repo (default ATERCATES/warp)
+#   WARP_FORCE_APPIMAGE=1 — on Linux, skip the .deb path and install the AppImage
 
 set -euo pipefail
 
@@ -23,7 +28,7 @@ while (( "$#" )); do
     --tag=*) TAG="${1#*=}"; shift ;;
     --uninstall) ACTION="uninstall"; shift ;;
     -h|--help)
-      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -44,7 +49,7 @@ detect_platform() {
         x86_64) echo "macos-x86_64" ;;
         arm64|aarch64)
           fail "macOS arm64 is not published by this fork. Run on an Intel Mac, \
-or build locally: cargo build --release --bin warp-oss --features warp/remote_sessions"
+or build locally: cargo build --release --bin warp-oss"
           ;;
         *) fail "Unsupported macOS arch: $uname_m" ;;
       esac
@@ -59,11 +64,18 @@ or build locally: cargo build --release --bin warp-oss --features warp/remote_se
   esac
 }
 
-artifact_for_platform() {
-  case "$1" in
-    macos-x86_64) echo "WarpOss-x86_64-apple-darwin.zip" ;;
-    linux-x86_64) echo "WarpOss-x86_64-linux.AppImage" ;;
-  esac
+# On Linux, prefer the .deb if dpkg + apt are available — gives users proper
+# package management. Set WARP_FORCE_APPIMAGE=1 to override.
+linux_install_method() {
+  if [[ "${WARP_FORCE_APPIMAGE:-0}" == "1" ]]; then
+    echo "appimage"
+    return
+  fi
+  if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    echo "deb"
+  else
+    echo "appimage"
+  fi
 }
 
 resolve_tag() {
@@ -71,7 +83,6 @@ resolve_tag() {
     echo "$TAG"
     return
   fi
-  # Pick the latest fork-v* release without requiring `gh` or auth.
   local api="https://api.github.com/repos/${REPO}/releases"
   local latest
   latest=$(curl -fsSL "$api" \
@@ -82,24 +93,21 @@ resolve_tag() {
   echo "$latest"
 }
 
+# Look up the actual .deb asset filename from the GitHub Release API (it
+# embeds the version derived from the release tag at build time, so we can't
+# hard-code it).
+deb_asset_name() {
+  local tag="$1"
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/tags/${tag}" \
+    | grep -oE '"name": *"warp-terminal-oss[^"]+\.deb"' \
+    | head -1 \
+    | sed -E 's/.*"(warp-terminal-oss[^"]+\.deb)".*/\1/'
+}
+
 download() {
   local url="$1" out="$2"
   step "Downloading $(basename "$out")"
   curl -fL --progress-bar -o "$out" "$url"
-}
-
-verify_checksum() {
-  local artifact="$1" checksum_file="$2"
-  step "Verifying checksum"
-  if command -v sha256sum >/dev/null 2>&1; then
-    (cd "$(dirname "$artifact")" && sha256sum -c "$(basename "$checksum_file")")
-  else
-    # macOS uses shasum
-    local expected actual
-    expected=$(awk '{print $1}' "$checksum_file")
-    actual=$(shasum -a 256 "$artifact" | awk '{print $1}')
-    [[ "$expected" == "$actual" ]] || fail "Checksum mismatch (expected $expected, got $actual)"
-  fi
 }
 
 install_macos() {
@@ -127,7 +135,20 @@ install_macos() {
 EOF
 }
 
-install_linux() {
+install_linux_deb() {
+  local deb="$1"
+  step "Installing .deb via apt"
+  # Prefer apt (resolves dependencies); fall back to plain dpkg.
+  sudo apt-get install -y "$deb" || sudo dpkg -i "$deb"
+  cat <<EOF
+
+✓ Installed warp-terminal-oss via dpkg.
+  Launch from your app menu, or run:
+      warp-oss
+EOF
+}
+
+install_linux_appimage() {
   local appimage="$1"
   local bin_dir="${HOME}/.local/bin"
   local apps_dir="${HOME}/.local/share/applications"
@@ -141,11 +162,7 @@ install_linux() {
   step "Creating desktop entry"
   mkdir -p "$apps_dir" "$icons_dir"
 
-  # Best-effort icon extraction from the AppImage.
-  local extract_dir
-  extract_dir=$(mktemp -d)
   if "$target_bin" --appimage-extract '*.png' >/dev/null 2>&1; then
-    # Pick the largest PNG.
     local extracted_icon
     extracted_icon=$(find squashfs-root -name '*.png' -printf '%s %p\n' 2>/dev/null \
       | sort -rn | head -1 | awk '{print $2}' || true)
@@ -154,7 +171,6 @@ install_linux() {
     fi
     rm -rf squashfs-root
   fi
-  rm -rf "$extract_dir"
 
   cat > "$apps_dir/warp-oss.desktop" <<EOF
 [Desktop Entry]
@@ -194,13 +210,17 @@ uninstall() {
       note "Removed ~/Applications/WarpOss.app"
       ;;
     Linux)
+      if command -v dpkg >/dev/null 2>&1 && dpkg -s warp-terminal-oss >/dev/null 2>&1; then
+        sudo apt-get remove -y warp-terminal-oss
+        note "Removed warp-terminal-oss via apt"
+      fi
       rm -f "${HOME}/.local/bin/warp-oss"
       rm -f "${HOME}/.local/share/applications/warp-oss.desktop"
       rm -f "${HOME}/.local/share/icons/hicolor/256x256/apps/warp-oss.png"
       if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
       fi
-      note "Removed warp-oss binary, desktop entry, and icon"
+      note "Removed AppImage install (binary, desktop entry, icon)"
       ;;
     *) fail "Unsupported OS: $(uname -s)" ;;
   esac
@@ -213,22 +233,40 @@ main() {
     return
   fi
 
-  local platform artifact tag base_url tmp
+  local platform tag base_url tmp method
   platform=$(detect_platform)
-  artifact=$(artifact_for_platform "$platform")
   tag=$(resolve_tag)
   base_url="https://github.com/${REPO}/releases/download/${tag}"
   tmp=$(mktemp -d)
   trap "rm -rf $tmp" EXIT
 
-  step "Resolved release: $tag (platform: $platform)"
-  download "$base_url/$artifact"            "$tmp/$artifact"
-  download "$base_url/$artifact.sha256"     "$tmp/$artifact.sha256"
-  verify_checksum "$tmp/$artifact" "$tmp/$artifact.sha256"
+  if [[ "$platform" == "linux-x86_64" ]]; then
+    method=$(linux_install_method)
+  else
+    method=default
+  fi
+  step "Resolved release: $tag (platform: $platform, method: $method)"
 
-  case "$platform" in
-    macos-*) install_macos "$tmp/$artifact" ;;
-    linux-*) install_linux "$tmp/$artifact" ;;
+  case "$method" in
+    deb)
+      local deb_name
+      deb_name=$(deb_asset_name "$tag")
+      [[ -n "$deb_name" ]] || fail "Release $tag has no .deb asset. Force AppImage via WARP_FORCE_APPIMAGE=1, or pass --tag pointing at a release that includes one."
+      download "$base_url/$deb_name" "$tmp/$deb_name"
+      install_linux_deb "$tmp/$deb_name"
+      ;;
+    *)
+      case "$platform" in
+        macos-x86_64)
+          download "$base_url/WarpOss-x86_64-apple-darwin.zip" "$tmp/macos.zip"
+          install_macos "$tmp/macos.zip"
+          ;;
+        linux-x86_64)
+          download "$base_url/WarpOss-x86_64-linux.AppImage" "$tmp/warp-oss.AppImage"
+          install_linux_appimage "$tmp/warp-oss.AppImage"
+          ;;
+      esac
+      ;;
   esac
 }
 

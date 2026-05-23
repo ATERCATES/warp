@@ -8,9 +8,9 @@ name: Fork Release
 #   - push of a `fork-v*` tag (e.g. `fork-v0.1.0`)
 #
 # Outputs uploaded to the matching Release:
-#   - WarpOss-aarch64-apple-darwin.zip   (Apple Silicon Mac)
-#   - WarpOss-x86_64-apple-darwin.zip    (Intel Mac)
-#   - WarpOss-x86_64-linux.AppImage      (Linux x86_64)
+#   - WarpOss-x86_64-apple-darwin.zip                  (Intel Mac)
+#   - WarpOss-x86_64-linux.AppImage                    (Linux x86_64, AppImage)
+#   - warp-terminal-oss_<version>_amd64.deb            (Linux x86_64, Debian/Ubuntu)
 #
 # No Apple signing, no notarization, no GCS upload, no Sentry. Everything runs
 # with the default `secrets.GITHUB_TOKEN`.
@@ -34,6 +34,13 @@ on:
 permissions:
   contents: write
 
+env:
+  # GitHub-hosted runners don't ship FUSE; tell every AppImage we invoke
+  # (linuxdeploy, the AppImage we produce ourselves) to extract itself to a
+  # temp dir and run from there instead of trying to mount via FUSE. Mirrors
+  # the upstream `release_linux_x86` job in the deleted `create_release.yml`.
+  APPIMAGE_EXTRACT_AND_RUN: '1'
+
 jobs:
   build:
     name: Build (${{ matrix.label }})
@@ -46,14 +53,17 @@ jobs:
             target_os: macos
             arch: x86_64
             rust_target: x86_64-apple-darwin
-            artifact: WarpOss-x86_64-apple-darwin.zip
           - label: Linux x86_64
             os: ubuntu-22.04
             target_os: linux
             arch: x86_64
             rust_target: x86_64-unknown-linux-gnu
-            artifact: WarpOss-x86_64-linux.AppImage
     runs-on: ${{ matrix.os }}
+    env:
+      # `script/linux/bundle_deb` derives the package version from this. If
+      # unset, the .deb file name comes out malformed (`pkg__amd64.deb`).
+      # Drop the leading "fork-v" to match Debian's preferred version style.
+      GIT_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,33 +82,37 @@ jobs:
         run: rustup target add ${{ matrix.rust_target }}
 
       - name: Install cargo-bundle (macOS)
-        # `script/install_cargo_release_deps` only installs cargo-about; the
-        # bundler comes from a separate script that the upstream release
-        # workflow calls explicitly.
+        # `script/install_cargo_release_deps` only installs cargo-about. The
+        # bundler comes from a separate script that fetches a cached binary;
+        # fall back to building from source if the cache binary fails to
+        # execute under the host arch.
         if: matrix.target_os == 'macos'
-        run: ./script/install_cargo_bundle
+        run: ./script/install_cargo_bundle || cargo install --locked cargo-bundle
+
+      - name: Install create-dmg (macOS)
+        # script/macos/bundle always invokes `create-dmg` for ARTIFACT=app,
+        # even when codesigning is skipped (lines 760-790 of script/macos/bundle).
+        # Without this, the bundle step exits at the DMG creation phase.
+        if: matrix.target_os == 'macos'
+        run: brew install create-dmg
 
       - name: Install linuxdeploy (Linux)
         # script/linux/bundle_appimage shells out to `linuxdeploy` directly.
-        # The repo provides an installer at script/linux/install_linuxdeploy
-        # that drops the AppImage tool into ~/.local/bin. Add that dir to
-        # the path so the bundle script can find it.
+        # The repo's install_linuxdeploy script drops the AppImage tool into
+        # ~/.local/bin; add that to GITHUB_PATH so the bundle script finds it.
         if: matrix.target_os == 'linux'
         run: |
           ./script/linux/install_linuxdeploy
           echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build OSS bundle
-        env:
-          # script/macos/bundle skips codesign when these are unset; we
-          # ship unsigned .app archives and document the Gatekeeper bypass
-          # in scripts/install.sh.
-          DISABLE_CODESIGN: '1'
         run: |
           if [[ "${{ matrix.target_os }}" == "macos" ]]; then
-            ./script/bundle --channel oss --arch ${{ matrix.arch }}
+            # `--nosign` flips CODESIGN=false explicitly; DMG is still created
+            # (unsigned) and we pick up the `.app` for zip distribution.
+            ./script/bundle --channel oss --arch ${{ matrix.arch }} --nosign
           else
-            BUILD_ARCH=${{ matrix.arch }} ./script/bundle --channel oss --packages appimage
+            BUILD_ARCH=${{ matrix.arch }} ./script/bundle --channel oss --packages appimage,deb
           fi
 
       - name: Package macOS .app as zip
@@ -107,39 +121,62 @@ jobs:
           BUNDLE_DIR=target/${{ matrix.rust_target }}/release-lto/bundle/osx
           if [[ ! -d "$BUNDLE_DIR/WarpOss.app" ]]; then
             echo "Expected $BUNDLE_DIR/WarpOss.app to exist; found:" >&2
-            ls -la "$BUNDLE_DIR" >&2
+            ls -la "$BUNDLE_DIR" >&2 || true
             exit 1
           fi
-          ditto -c -k --keepParent "$BUNDLE_DIR/WarpOss.app" "${{ matrix.artifact }}"
+          ditto -c -k --keepParent "$BUNDLE_DIR/WarpOss.app" "WarpOss-${{ matrix.arch }}-apple-darwin.zip"
 
-      - name: Locate Linux AppImage
+      - name: Locate Linux artifacts
         if: matrix.target_os == 'linux'
         run: |
-          APPIMAGE=$(ls target/release-lto/bundle/linux/WarpOss-*.AppImage | head -1)
-          if [[ -z "$APPIMAGE" ]]; then
-            echo "No AppImage found under target/release-lto/bundle/linux/" >&2
-            ls -la target/release-lto/bundle/linux/ >&2 || true
-            exit 1
-          fi
-          cp "$APPIMAGE" "${{ matrix.artifact }}"
-          chmod +x "${{ matrix.artifact }}"
+          OUT_DIR=target/release-lto/bundle/linux
+          APPIMAGE=$(ls "$OUT_DIR"/WarpOss-*.AppImage | head -1)
+          DEB=$(ls "$OUT_DIR"/warp-terminal-oss_*_amd64.deb | head -1)
+          for f in "$APPIMAGE" "$DEB"; do
+            if [[ -z "$f" || ! -f "$f" ]]; then
+              echo "Missing expected artifact in $OUT_DIR" >&2
+              ls -la "$OUT_DIR" >&2 || true
+              exit 1
+            fi
+          done
+          cp "$APPIMAGE" "WarpOss-${{ matrix.arch }}-linux.AppImage"
+          cp "$DEB"      "$(basename "$DEB")"
+          chmod +x "WarpOss-${{ matrix.arch }}-linux.AppImage"
 
-      - name: Compute artifact checksum
+      - name: Compute artifact checksums
         run: |
-          if command -v sha256sum >/dev/null; then
-            sha256sum "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+          if [[ "${{ matrix.target_os }}" == "macos" ]]; then
+            FILES=(WarpOss-${{ matrix.arch }}-apple-darwin.zip)
           else
-            shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+            FILES=(WarpOss-${{ matrix.arch }}-linux.AppImage warp-terminal-oss_*_amd64.deb)
           fi
-          cat "${{ matrix.artifact }}.sha256"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${FILES[@]}" > checksums.sha256
+          else
+            shasum -a 256 "${FILES[@]}" > checksums.sha256
+          fi
+          cat checksums.sha256
 
-      - name: Upload artifact (for cross-job collection)
+      - name: Upload artifacts (macOS)
+        if: matrix.target_os == 'macos'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: artifacts-${{ matrix.target_os }}-${{ matrix.arch }}
           path: |
-            ${{ matrix.artifact }}
-            ${{ matrix.artifact }}.sha256
+            WarpOss-${{ matrix.arch }}-apple-darwin.zip
+            checksums.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload artifacts (Linux)
+        if: matrix.target_os == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.target_os }}-${{ matrix.arch }}
+          path: |
+            WarpOss-${{ matrix.arch }}-linux.AppImage
+            warp-terminal-oss_*_amd64.deb
+            checksums.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -167,7 +204,11 @@ jobs:
       - name: Flatten artifact layout
         run: |
           mkdir -p dist
-          find artifacts -type f \( -name '*.zip' -o -name '*.AppImage' -o -name '*.sha256' \) -exec cp {} dist/ \;
+          find artifacts -type f \( -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' -o -name 'checksums.sha256' \) -exec cp {} dist/ \;
+          # Merge per-job checksums into one file, then drop the per-job copies.
+          if compgen -G 'artifacts/*/checksums.sha256' >/dev/null; then
+            cat artifacts/*/checksums.sha256 > dist/checksums.sha256
+          fi
           ls -la dist/
 
       - name: Publish release
@@ -188,15 +229,16 @@ jobs:
             curl -sSf https://raw.githubusercontent.com/ATERCATES/warp/master/scripts/install.sh | bash
             ```
 
-            The installer detects your OS / arch, downloads the matching artifact from this release, and installs it.
+            The installer detects your OS / arch, picks the right artifact (.deb when `dpkg` is available, otherwise the AppImage on Linux), downloads from this release, and installs it.
 
             ## Manual install
 
-            - **macOS**: download the `.zip` matching your Mac, unzip into `~/Applications`, then first-launch bypass:
+            - **macOS Intel**: download `WarpOss-x86_64-apple-darwin.zip`, unzip into `~/Applications`, then bypass Gatekeeper on first launch:
               ```sh
               xattr -dr com.apple.quarantine ~/Applications/WarpOss.app
               ```
-            - **Linux x86_64**: download `WarpOss-x86_64-linux.AppImage`, `chmod +x`, run.
+            - **Debian / Ubuntu**: `sudo apt install ./warp-terminal-oss_*_amd64.deb`
+            - **Any Linux x86_64**: download `WarpOss-x86_64-linux.AppImage`, `chmod +x`, run.
 
             ## Notes
 
