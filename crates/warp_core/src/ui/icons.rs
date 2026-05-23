@@ -334,6 +334,7 @@ pub enum Icon {
     JsonLang,
     PhpLang,
     KotlinLang,
+    RemoteServer,
 }
 
 impl From<Icon> for &'static str {
@@ -663,6 +664,7 @@ impl From<Icon> for &'static str {
             Icon::JsonLang => "bundled/svg/file_type/json.svg",
             Icon::PhpLang => "bundled/svg/file_type/php.svg",
             Icon::KotlinLang => "bundled/svg/file_type/kotlin.svg",
+            Icon::RemoteServer => "bundled/svg/remote-server.svg",
         }
     }
 }

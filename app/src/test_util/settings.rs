@@ -98,6 +98,7 @@ pub fn initialize_settings_for_tests_with_mode(
     SelectionSettings::register(app);
     app.update(|ctx| {
         WarpifySettings::register(ctx);
+        crate::settings::remote_hosts::RemoteSessionsSettings::register(ctx);
     });
     SessionSettings::register(app);
     SshSettings::register(app);

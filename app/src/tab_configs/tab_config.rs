@@ -161,6 +161,8 @@ pub struct TabConfig {
     /// Populated during parsing; not serialized into or from the TOML.
     #[serde(skip)]
     pub source_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 impl TabConfig {

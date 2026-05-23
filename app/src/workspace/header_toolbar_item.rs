@@ -31,6 +31,7 @@ pub enum HeaderToolbarItemKind {
     AgentManagement,
     CodeReview,
     NotificationsMailbox,
+    RemoteSessions,
 }
 
 impl HeaderToolbarItemKind {
@@ -41,6 +42,7 @@ impl HeaderToolbarItemKind {
             Self::AgentManagement => "Agent Management",
             Self::CodeReview => "Code Review",
             Self::NotificationsMailbox => "Notifications",
+            Self::RemoteSessions => "Remote Sessions",
         }
     }
 
@@ -51,6 +53,7 @@ impl HeaderToolbarItemKind {
             Self::AgentManagement => Icon::Grid,
             Self::CodeReview => Icon::Diff,
             Self::NotificationsMailbox => Icon::Inbox,
+            Self::RemoteSessions => Icon::RemoteServer,
         }
     }
 
@@ -75,6 +78,9 @@ impl HeaderToolbarItemKind {
             }
             Self::CodeReview => cfg!(feature = "local_fs"),
             Self::NotificationsMailbox => FeatureFlag::HOANotifications.is_enabled(),
+            Self::RemoteSessions => {
+                cfg!(feature = "remote_sessions") && FeatureFlag::RemoteSessions.is_enabled()
+            }
         }
     }
 
@@ -94,18 +100,25 @@ impl HeaderToolbarItemKind {
     /// Whether this item opens a side panel (as opposed to replacing the content
     /// area or opening a popover).
     pub fn is_panel(&self) -> bool {
-        matches!(self, Self::TabsPanel | Self::ToolsPanel | Self::CodeReview)
+        matches!(
+            self,
+            Self::TabsPanel | Self::ToolsPanel | Self::CodeReview | Self::RemoteSessions
+        )
     }
 
     pub fn default_left() -> Vec<Self> {
-        vec![Self::TabsPanel, Self::ToolsPanel, Self::AgentManagement]
+        vec![
+            Self::TabsPanel,
+            Self::ToolsPanel,
+            Self::AgentManagement,
+            Self::RemoteSessions,
+        ]
     }
 
     pub fn default_right() -> Vec<Self> {
         vec![Self::CodeReview, Self::NotificationsMailbox]
     }
 
-    /// All toolbar item variants (availability filtering is done at the call site).
     pub fn all_items() -> Vec<Self> {
         vec![
             Self::TabsPanel,
@@ -113,6 +126,7 @@ impl HeaderToolbarItemKind {
             Self::AgentManagement,
             Self::CodeReview,
             Self::NotificationsMailbox,
+            Self::RemoteSessions,
         ]
     }
 }

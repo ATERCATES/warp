@@ -99,6 +99,7 @@ mod platform_page;
 mod privacy;
 mod privacy_page;
 mod referrals_page;
+mod remote_hosts_page;
 mod remove_custom_endpoint_confirmation_dialog;
 mod settings_file_footer;
 pub(crate) mod settings_page;
@@ -228,6 +229,7 @@ pub enum SettingsSection {
     Keybindings,
     Privacy,
     Referrals,
+    RemoteHosts,
     SharedBlocks,
     Teams,
     WarpDrive,
@@ -265,6 +267,7 @@ impl Display for SettingsSection {
         match self {
             SettingsSection::BillingAndUsage => write!(f, "Billing and usage"),
             SettingsSection::Keybindings => write!(f, "Keyboard shortcuts"),
+            SettingsSection::RemoteHosts => write!(f, "Remote hosts"),
             SettingsSection::SharedBlocks => write!(f, "Shared blocks"),
             SettingsSection::MCPServers => write!(f, "MCP Servers"),
             SettingsSection::WarpDrive => write!(f, "Warp Drive"),
@@ -364,6 +367,7 @@ impl FromStr for SettingsSection {
             "Keyboard shortcuts" => Ok(Self::Keybindings),
             "Privacy" => Ok(Self::Privacy),
             "Referrals" => Ok(Self::Referrals),
+            "Remote hosts" | "RemoteHosts" => Ok(Self::RemoteHosts),
             "Shared blocks" => Ok(Self::SharedBlocks),
             "Teams" => Ok(Self::Teams),
             "Warpify" => Ok(Self::Warpify),
@@ -1000,6 +1004,7 @@ macro_rules! update_page {
             SettingsPageViewHandle::OzCloudAPIKeys(handle) => $ctx.update_view(handle, $update),
             SettingsPageViewHandle::Privacy(handle) => $ctx.update_view(handle, $update),
             SettingsPageViewHandle::Referrals(handle) => $ctx.update_view(handle, $update),
+            SettingsPageViewHandle::RemoteHosts(handle) => $ctx.update_view(handle, $update),
             SettingsPageViewHandle::AI(handle) => $ctx.update_view(handle, $update),
             SettingsPageViewHandle::CloudEnvironments(handle) => $ctx.update_view(handle, $update),
             SettingsPageViewHandle::About(handle) => $ctx.update_view(handle, $update),
@@ -1149,6 +1154,12 @@ impl SettingsView {
             me.handle_referrals_page_event(event, ctx);
         });
 
+        let remote_hosts_page_handle =
+            ctx.add_typed_action_view(remote_hosts_page::RemoteHostsPageView::new);
+        ctx.subscribe_to_view(&remote_hosts_page_handle, |me, _, event, ctx| {
+            me.handle_remote_hosts_page_event(event, ctx);
+        });
+
         // Warp Drive page
         let warp_drive_page_handle =
             ctx.add_typed_action_view(warp_drive_page::WarpDriveSettingsPageView::new);
@@ -1207,6 +1218,7 @@ impl SettingsView {
             SettingsPage::new(platform_page_handle),
             SettingsPage::new(warpify_page_handle),
             SettingsPage::new(referrals_page_handle),
+            SettingsPage::new(remote_hosts_page_handle),
             SettingsPage::new(show_blocks_view_handle),
             SettingsPage::new(warp_drive_page_handle),
         ];
@@ -1246,6 +1258,7 @@ impl SettingsView {
             SettingsNavItem::Page(SettingsSection::Features),
             SettingsNavItem::Page(SettingsSection::Keybindings),
             SettingsNavItem::Page(SettingsSection::Warpify),
+            SettingsNavItem::Page(SettingsSection::RemoteHosts),
             SettingsNavItem::Page(SettingsSection::Referrals),
             SettingsNavItem::Page(SettingsSection::SharedBlocks),
             SettingsNavItem::Page(SettingsSection::WarpDrive),
@@ -1802,6 +1815,22 @@ impl SettingsView {
         }
     }
 
+    fn handle_remote_hosts_page_event(
+        &mut self,
+        event: &remote_hosts_page::RemoteHostsPageEvent,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        match event {
+            remote_hosts_page::RemoteHostsPageEvent::FocusModal => {
+                ctx.focus(&self.search_editor)
+            }
+            remote_hosts_page::RemoteHostsPageEvent::ShowModal
+            | remote_hosts_page::RemoteHostsPageEvent::HideModal => {
+                ctx.notify();
+            }
+        }
+    }
+
     fn handle_warp_drive_page_event(
         &mut self,
         event: &warp_drive_page::WarpDriveSettingsPageEvent,
@@ -1999,6 +2028,7 @@ impl SettingsView {
             SettingsPageViewHandle::Privacy(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::Warpify(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::Referrals(v) => v.as_ref(app).should_render(app),
+            SettingsPageViewHandle::RemoteHosts(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::AI(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::CloudEnvironments(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::MCPServers(v) => v.as_ref(app).should_render(app),
@@ -2225,6 +2255,9 @@ impl SettingsView {
             }
             SettingsPageViewHandle::AI(view) => {
                 view.read(app, |view, _| view.get_modal_content(app))
+            }
+            SettingsPageViewHandle::RemoteHosts(view) => {
+                view.read(app, |view, _| view.get_modal_content())
             }
             _ => None,
         }

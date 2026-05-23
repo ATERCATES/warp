@@ -54,6 +54,7 @@ fn build_test_tab_config_toml(name: &str, commands: Vec<String>) -> String {
         }],
         params: HashMap::new(),
         source_path: None,
+        metadata: None,
     };
 
     toml::to_string_pretty(&config).expect("Test config should serialize")

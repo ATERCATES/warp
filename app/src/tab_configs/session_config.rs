@@ -167,6 +167,7 @@ pub fn build_tab_config(
         }],
         params,
         source_path: None,
+        metadata: None,
     }
 }
 
@@ -221,6 +222,7 @@ pub fn tab_config_from_pane_snapshot(
         panes,
         params: HashMap::new(),
         source_path: None,
+        metadata: None,
     }
 }
 

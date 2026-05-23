@@ -876,6 +876,9 @@ pub enum FeatureFlag {
 
     /// Enables the code review view for remote sessions.
     RemoteCodeReview,
+
+    /// Gates the Remote Sessions panel for managing tmux sessions on user-owned SSH hosts.
+    RemoteSessions,
 }
 
 static FLAG_STATES: [AtomicBool; cardinality::<FeatureFlag>()] =

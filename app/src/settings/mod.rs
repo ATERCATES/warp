@@ -24,6 +24,7 @@ pub mod macros;
 pub mod manager;
 pub mod native_preference;
 mod onboarding;
+pub mod remote_hosts;
 mod pane;
 mod privacy;
 mod same_line_prompt_block;

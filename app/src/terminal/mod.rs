@@ -75,6 +75,8 @@ pub mod shared_session;
 mod shell_launch_state;
 pub mod universal_developer_input;
 
+#[cfg(feature = "remote_sessions")]
+pub mod remote_sessions;
 pub mod ssh;
 pub mod terminal_manager;
 mod terminal_size_element;

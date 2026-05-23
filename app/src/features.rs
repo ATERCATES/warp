@@ -489,6 +489,8 @@ fn enabled_features() -> HashSet<FeatureFlag> {
         FeatureFlag::GitCredentialRefresh,
         #[cfg(feature = "remote_code_review")]
         FeatureFlag::RemoteCodeReview,
+        #[cfg(feature = "remote_sessions")]
+        FeatureFlag::RemoteSessions,
         #[cfg(feature = "custom_inference_endpoints")]
         FeatureFlag::CustomInferenceEndpoints,
     ]);

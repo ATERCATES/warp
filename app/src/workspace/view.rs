@@ -11,6 +11,8 @@ pub(crate) mod left_panel;
 pub(crate) mod onboarding;
 pub(crate) mod openwarp_launch_modal;
 pub(crate) mod orchestration_launch_modal;
+#[cfg(feature = "remote_sessions")]
+pub(crate) mod remote_sessions_panel;
 pub(crate) mod right_panel;
 mod startup_directory;
 #[cfg(test)]
@@ -592,6 +594,8 @@ pub(crate) const TOGGLE_WARP_DRIVE_BINDING_NAME: &str = "workspace:toggle_warp_d
 pub(crate) const TOGGLE_RIGHT_PANEL_BINDING_NAME: &str = "workspace:toggle_right_panel";
 pub(crate) const TOGGLE_VERTICAL_TABS_PANEL_BINDING_NAME: &str =
     "workspace:toggle_vertical_tabs_panel";
+pub(crate) const TOGGLE_REMOTE_SESSIONS_PANEL_BINDING_NAME: &str =
+    "workspace:toggle_remote_sessions_panel";
 pub(crate) const OPEN_GLOBAL_SEARCH_BINDING_NAME: &str = "workspace:open_global_search";
 pub(crate) const TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME: &str =
     "workspace:toggle_conversation_list_view";
@@ -1088,6 +1092,10 @@ pub struct Workspace {
     /// orchestration cards' "New API key…" flow. Cloud mode renders the
     /// FTUX view inline and does not use this.
     create_auth_secret_modal: Option<ViewHandle<Modal<AuthSecretFtuxView>>>,
+    #[cfg(feature = "remote_sessions")]
+    remote_sessions_panel_view: ViewHandle<remote_sessions_panel::RemoteSessionsPanelView>,
+    #[cfg(feature = "remote_sessions")]
+    remote_attach_tabs: HashMap<(String, String), EntityId>,
 }
 
 impl Workspace {
@@ -3069,6 +3077,10 @@ impl Workspace {
             },
         );
 
+        #[cfg(feature = "remote_sessions")]
+        let remote_sessions_panel_view = ctx
+            .add_typed_action_view(remote_sessions_panel::RemoteSessionsPanelView::new);
+
         let mut ws = Self {
             tabs: Vec::new(),
             active_tab_index: 0,
@@ -3206,6 +3218,10 @@ impl Workspace {
                 Self::build_remove_tab_config_confirmation_dialog(ctx),
             handoff_environment_creation_modal: None,
             create_auth_secret_modal: None,
+            #[cfg(feature = "remote_sessions")]
+            remote_sessions_panel_view,
+            #[cfg(feature = "remote_sessions")]
+            remote_attach_tabs: HashMap::new(),
         };
 
         ws.configure_new_workspace(workspace_setting, ctx);
@@ -6481,6 +6497,73 @@ impl Workspace {
                 tab.selected_color = SelectedTabColor::Color(color);
             }
         }
+    }
+
+    #[cfg(feature = "remote_sessions")]
+    fn build_remote_attach_tab_config(
+        &self,
+        local_host_key: &str,
+        session_name: &str,
+        ctx: &AppContext,
+    ) -> Option<crate::tab_configs::TabConfig> {
+        use crate::settings::remote_hosts::RemoteSessionsSettings;
+        use crate::tab_configs::tab_config::{TabConfigPaneNode, TabConfigPaneType};
+        use crate::tab_configs::TabConfig;
+        use crate::terminal::cli_agent_sessions::event::current_protocol_version;
+        use crate::terminal::remote_sessions::socket_path_for;
+        use crate::terminal::remote_sessions::ssh_args::target_args_shell_quoted;
+        use warp_core::channel::ChannelState;
+        let settings = RemoteSessionsSettings::as_ref(ctx);
+        let host = settings
+            .hosts
+            .iter()
+            .find(|h| h.local_host_key == local_host_key)
+            .cloned()?;
+        let socket = socket_path_for(local_host_key);
+        let warp_version = ChannelState::app_version()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "local".to_string());
+        let protocol_v = current_protocol_version();
+        let session_q = shell_words::quote(session_name).into_owned();
+        let version_q = shell_words::quote(&warp_version).into_owned();
+        let remote_script = format!(
+            "tmux set-environment -t {session_q} WARP_CLIENT_VERSION {version_q} 2>/dev/null; \
+             tmux set-environment -t {session_q} WARP_CLI_AGENT_PROTOCOL_VERSION {protocol_v} 2>/dev/null; \
+             tmux set-option -t {session_q} -ga update-environment 'WARP_CLIENT_VERSION WARP_CLI_AGENT_PROTOCOL_VERSION' 2>/dev/null; \
+             tmux set-option -t {session_q} -g allow-passthrough on 2>/dev/null; \
+             export WARP_CLIENT_VERSION={version_q}; \
+             export WARP_CLI_AGENT_PROTOCOL_VERSION={protocol_v}; \
+             exec tmux attach -t {session_q}",
+        );
+        let mut parts: Vec<String> = vec![
+            "ssh".into(),
+            "-tt".into(),
+            "-o".into(),
+            "ControlMaster=no".into(),
+            "-o".into(),
+            shell_words::quote(&format!("ControlPath={}", socket.display())).into_owned(),
+        ];
+        parts.extend(target_args_shell_quoted(&host));
+        parts.push(shell_words::quote(&remote_script).into_owned());
+        let command = format!("exec {}", parts.join(" "));
+        Some(TabConfig {
+            name: format!("{} · {}", host.alias, session_name),
+            title: Some(format!("{}: {}", host.alias, session_name)),
+            color: None,
+            panes: vec![TabConfigPaneNode {
+                id: "main".into(),
+                pane_type: Some(TabConfigPaneType::Terminal),
+                split: None,
+                children: None,
+                is_focused: Some(true),
+                directory: None,
+                commands: Some(vec![command]),
+                shell: None,
+            }],
+            params: HashMap::new(),
+            source_path: None,
+            metadata: None,
+        })
     }
 
     /// Opens a tab config, showing the param-fill modal when the config has parameters,
@@ -10008,10 +10091,24 @@ impl Workspace {
         } else {
             None
         };
+        #[cfg(feature = "remote_sessions")]
+        let remote_attach_ids: std::collections::HashSet<EntityId> =
+            self.remote_attach_tabs.values().copied().collect();
         let tabs = self
             .tab_views()
             .enumerate()
             .filter(|(tab_index, _)| Some(*tab_index) != transferred_tab_index)
+            .filter(|(_, pane_group_view)| {
+                #[cfg(feature = "remote_sessions")]
+                {
+                    !remote_attach_ids.contains(&pane_group_view.id())
+                }
+                #[cfg(not(feature = "remote_sessions"))]
+                {
+                    let _ = pane_group_view;
+                    true
+                }
+            })
             .map(|(tab_index, pane_group_view)| {
                 let resizable_data = ResizableData::handle(app);
                 let modal_sizes = resizable_data.as_ref(app).get_all_handles(window_id);
@@ -10417,6 +10514,10 @@ impl Workspace {
 
         let removed_pane_group_id = tab_data.pane_group.id();
         self.tab_mru_order.retain(|id| *id != removed_pane_group_id);
+
+        #[cfg(feature = "remote_sessions")]
+        self.remote_attach_tabs
+            .retain(|_, id| *id != removed_pane_group_id);
 
         // Re-adopted child tabs leave no useful tab contents to restore; the
         // live pane already moved back.
@@ -17953,6 +18054,45 @@ impl Workspace {
         .finish()
     }
 
+    #[cfg(feature = "remote_sessions")]
+    fn render_remote_sessions_panel_button(
+        &self,
+        appearance: &Appearance,
+        _ctx: &AppContext,
+    ) -> Box<dyn Element> {
+        let is_active = self.current_workspace_state.is_remote_sessions_panel_open;
+        SavePosition::new(
+            Container::new(
+                Align::new(
+                    self.render_tab_bar_icon_button(
+                        appearance,
+                        icons::Icon::RemoteServer,
+                        &self.mouse_states.remote_sessions_panel_icon,
+                        WorkspaceAction::ToggleRemoteSessionsPanel,
+                        "Remote sessions panel".to_string(),
+                        None,
+                        is_active,
+                        false,
+                    )
+                    .finish(),
+                )
+                .finish(),
+            )
+            .finish(),
+            "workspace:toggle_remote_sessions_panel",
+        )
+        .finish()
+    }
+
+    #[cfg(not(feature = "remote_sessions"))]
+    fn render_remote_sessions_panel_button(
+        &self,
+        _appearance: &Appearance,
+        _ctx: &AppContext,
+    ) -> Box<dyn Element> {
+        Flex::row().finish()
+    }
+
     fn render_tools_panel_button(
         &self,
         appearance: &Appearance,
@@ -18589,6 +18729,9 @@ impl Workspace {
             HeaderToolbarItemKind::CodeReview => self.render_right_panel_button(appearance, ctx),
             HeaderToolbarItemKind::NotificationsMailbox => {
                 self.render_notifications_mailbox_button(appearance, ctx)
+            }
+            HeaderToolbarItemKind::RemoteSessions => {
+                self.render_remote_sessions_panel_button(appearance, ctx)
             }
         };
         Some(
@@ -20310,6 +20453,22 @@ impl Workspace {
             }
             HeaderToolbarItemKind::AgentManagement
             | HeaderToolbarItemKind::NotificationsMailbox => None,
+            HeaderToolbarItemKind::RemoteSessions => {
+                #[cfg(feature = "remote_sessions")]
+                {
+                    if !self.current_workspace_state.is_remote_sessions_panel_open {
+                        return None;
+                    }
+                    Some(ChildView::new(&self.remote_sessions_panel_view).finish())
+                }
+                #[cfg(not(feature = "remote_sessions"))]
+                {
+                    let _ = app;
+                    let _ = pane_group;
+                    let _ = config;
+                    None
+                }
+            }
         }
     }
 
@@ -21924,6 +22083,104 @@ impl TypedActionView for Workspace {
                     }
 
                     ctx.notify();
+                }
+            }
+            ToggleRemoteSessionsPanel => {
+                #[cfg(feature = "remote_sessions")]
+                {
+                    if FeatureFlag::RemoteSessions.is_enabled() {
+                        let is_open = !self.current_workspace_state.is_remote_sessions_panel_open;
+                        self.current_workspace_state.is_remote_sessions_panel_open = is_open;
+                        ctx.notify();
+                        if is_open {
+                            ctx.focus(&self.remote_sessions_panel_view);
+                        } else {
+                            self.focus_active_tab(ctx);
+                        }
+                    }
+                }
+            }
+            CloseRemoteAttachTab {
+                local_host_key,
+                session_name,
+            } => {
+                #[cfg(feature = "remote_sessions")]
+                {
+                    let map_key = (local_host_key.clone(), session_name.clone());
+                    if let Some(pane_group_id) = self.remote_attach_tabs.remove(&map_key) {
+                        if let Some(index) = self
+                            .tabs
+                            .iter()
+                            .position(|t| t.pane_group.id() == pane_group_id)
+                        {
+                            self.remove_tab(index, false, true, ctx);
+                        }
+                    }
+                }
+                #[cfg(not(feature = "remote_sessions"))]
+                {
+                    let _ = (local_host_key, session_name);
+                }
+            }
+            OpenRemoteAttachTab {
+                local_host_key,
+                session_name,
+            } => {
+                #[cfg(feature = "remote_sessions")]
+                {
+                    let key = local_host_key.clone();
+                    let name = session_name.clone();
+                    let map_key = (key.clone(), name.clone());
+                    if let Some(existing_id) = self.remote_attach_tabs.get(&map_key).copied() {
+                        if self.tabs.iter().any(|t| t.pane_group.id() == existing_id) {
+                            self.activate_tab_by_pane_group_id(existing_id, ctx);
+                            return;
+                        }
+                        self.remote_attach_tabs.remove(&map_key);
+                    }
+                    if let Some(config) = self.build_remote_attach_tab_config(&key, &name, ctx) {
+                        self.open_tab_config(config, ctx);
+                        if let Some(tab) = self.tabs.get(self.active_tab_index) {
+                            self.remote_attach_tabs.insert(map_key, tab.pane_group.id());
+                            let terminal_view = tab
+                                .pane_group
+                                .as_ref(ctx)
+                                .terminal_views(ctx)
+                                .into_iter()
+                                .next();
+                            if let Some(terminal_view) = terminal_view {
+                                let host_key = key.clone();
+                                let session_name = name.clone();
+                                terminal_view.update(ctx, |tv, _| {
+                                    tv.set_remote_session_context(
+                                        crate::terminal::view::RemoteSessionContext {
+                                            local_host_key: host_key.clone(),
+                                            session_name: session_name.clone(),
+                                        },
+                                    );
+                                });
+                                ctx.subscribe_to_view(
+                                    &terminal_view,
+                                    move |_me, _, event, ctx| {
+                                        if matches!(event, crate::terminal::view::Event::Exited) {
+                                            ctx.dispatch_typed_action(
+                                                &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {
+                                                    local_host_key: host_key.clone(),
+                                                    session_name: session_name.clone(),
+                                                },
+                                            );
+                                        }
+                                    },
+                                );
+                            }
+                        }
+                    } else {
+                        log::warn!("OpenRemoteAttachTab: host {key} not found in settings");
+                    }
+                }
+                #[cfg(not(feature = "remote_sessions"))]
+                {
+                    let _ = (local_host_key, session_name);
                 }
             }
             ViewAgentRunsForEnvironment { environment_id } => {

@@ -40,6 +40,8 @@ pub(super) struct WorkspaceMouseStates {
     pub(super) notifications_mailbox: MouseStateHandle,
     pub(super) session_config_tab_config_chip_close: MouseStateHandle,
     pub(super) tools_panel_icon: MouseStateHandle,
+    #[cfg(feature = "remote_sessions")]
+    pub(super) remote_sessions_panel_icon: MouseStateHandle,
     pub(super) title_bar_search_bar: MouseStateHandle,
     #[cfg(target_family = "wasm")]
     pub(super) warp_logo: MouseStateHandle,
@@ -117,6 +119,7 @@ pub struct WorkspaceState {
     pub is_enable_auto_reload_modal_open: bool,
     pub is_notification_mailbox_open: bool,
     pub is_agent_management_view_open: bool,
+    pub is_remote_sessions_panel_open: bool,
     pub is_codex_modal_open: bool,
     pub is_cloud_agent_capacity_modal_open: bool,
     pub is_free_tier_limit_hit_modal_open: bool,
