@@ -818,7 +818,7 @@ where
 
     #[inline]
     fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
-        if FeatureFlag::SSHTmuxWrapper.is_enabled()
+        if (FeatureFlag::SSHTmuxWrapper.is_enabled() || FeatureFlag::RemoteSessions.is_enabled())
             && c == 'p'
             && params.len() == 1
             && params.iter().next() == Some(&[1000])

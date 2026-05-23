@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use warpui::{AppContext, Entity, ModelContext, ModelHandle, SingletonEntity};
-
 use warp_core::SessionId;
+use warpui::{AppContext, Entity, ModelContext, ModelHandle, SingletonEntity};
 
 #[derive(Clone, Debug)]
 pub struct RemoteAttachInfo {
@@ -34,10 +33,6 @@ impl RemoteAttachRegistry {
         _ctx: &mut ModelContext<Self>,
     ) {
         self.by_session.insert(session_id, info);
-    }
-
-    pub fn forget(&mut self, session_id: SessionId, _ctx: &mut ModelContext<Self>) {
-        self.by_session.remove(&session_id);
     }
 
     pub fn forget_by_host(

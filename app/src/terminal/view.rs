@@ -22269,21 +22269,16 @@ impl TerminalView {
         self.warpify_state.last_warpified_ssh_host()
     }
 
-    /// For tabs opened via the Remote Sessions panel, looks up the SSH host
-    /// associated with the active session via `RemoteAttachRegistry`. This is
-    /// the integration seam that lets features like "Open in IDE" treat
-    /// panel-spawned tabs as remote sessions even before the full warpify SSH
-    /// bootstrap promotes them to `SessionType::WarpifiedRemote`.
     #[cfg(feature = "remote_sessions")]
     pub fn remote_attach_host(&self, ctx: &AppContext) -> Option<String> {
         use crate::settings::remote_hosts::RemoteSessionsSettings;
         use crate::terminal::remote_sessions::RemoteAttachRegistry;
         let session_id = self.active_block_session_id()?;
-        let registry = RemoteAttachRegistry::as_ref(ctx);
-        let info = registry.lookup(session_id)?;
-        let host_key = info.local_host_key.clone();
-        let settings = RemoteSessionsSettings::as_ref(ctx);
-        settings
+        let host_key = RemoteAttachRegistry::as_ref(ctx)
+            .lookup(session_id)?
+            .local_host_key
+            .clone();
+        RemoteSessionsSettings::as_ref(ctx)
             .hosts
             .to_vec()
             .into_iter()

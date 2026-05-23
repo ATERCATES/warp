@@ -6530,7 +6530,7 @@ impl Workspace {
              tmux set-option -t {sn} -g allow-passthrough on 2>/dev/null; \
              export WARP_CLIENT_VERSION={wv}; \
              export WARP_CLI_AGENT_PROTOCOL_VERSION={pv}; \
-             exec tmux attach -t {sn}",
+             exec tmux -CC attach -t {sn}",
             sn = session_q,
             wv = version_q,
             pv = protocol_v
@@ -6589,8 +6589,83 @@ impl Workspace {
         })
     }
 
-    /// Opens a tab config, showing the param-fill modal when the config has parameters,
-    /// or opening the tab directly when there are no parameters.
+    #[cfg(feature = "remote_sessions")]
+    fn handle_open_remote_attach_tab(
+        &mut self,
+        local_host_key: &str,
+        session_name: &str,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        use crate::terminal::remote_sessions::{
+            RemoteAttachInfo, RemoteAttachRegistry, RemoteSessionsModel,
+        };
+        use crate::terminal::shell::ShellType;
+
+        let map_key = (local_host_key.to_string(), session_name.to_string());
+        if let Some(existing_id) = self.remote_attach_tabs.get(&map_key).copied() {
+            if self.tabs.iter().any(|t| t.pane_group.id() == existing_id) {
+                self.activate_tab_by_pane_group_id(existing_id, ctx);
+                return;
+            }
+            self.remote_attach_tabs.remove(&map_key);
+        }
+
+        let Some(config) = self.build_remote_attach_tab_config(local_host_key, session_name, ctx)
+        else {
+            log::warn!("OpenRemoteAttachTab: host {local_host_key} not found in settings");
+            return;
+        };
+        self.open_tab_config(config, ctx);
+
+        if let Some(tab) = self.tabs.get(self.active_tab_index) {
+            self.remote_attach_tabs.insert(map_key, tab.pane_group.id());
+            if let Some(terminal_view) = tab
+                .pane_group
+                .as_ref(ctx)
+                .terminal_views(ctx)
+                .into_iter()
+                .next()
+            {
+                let host_key = local_host_key.to_string();
+                let name = session_name.to_string();
+                ctx.subscribe_to_view(&terminal_view, move |_me, tv_handle, event, ctx| {
+                    if let Some(session_id) = tv_handle.as_ref(ctx).active_block_session_id() {
+                        let info = RemoteAttachInfo {
+                            local_host_key: host_key.clone(),
+                            session_name: name.clone(),
+                        };
+                        RemoteAttachRegistry::handle(ctx)
+                            .update(ctx, |reg, ctx| reg.record(session_id, info, ctx));
+                    }
+                    if matches!(event, crate::terminal::view::Event::Exited) {
+                        ctx.dispatch_typed_action(
+                            &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {
+                                local_host_key: host_key.clone(),
+                                session_name: name.clone(),
+                            },
+                        );
+                    }
+                });
+            }
+        }
+
+        let host_key = local_host_key.to_string();
+        let name = session_name.to_string();
+        ctx.spawn(
+            async move {
+                warpui::r#async::Timer::after(std::time::Duration::from_millis(1500)).await;
+            },
+            move |_me, _, ctx| {
+                let model = RemoteSessionsModel::handle(ctx);
+                let shell_type = model
+                    .as_ref(ctx)
+                    .detect_session_shell(&host_key, &name)
+                    .unwrap_or(ShellType::Bash);
+                model.update(ctx, |m, ctx| m.warpify_session(&host_key, name.clone(), shell_type, ctx));
+            },
+        );
+    }
+
     pub(crate) fn open_tab_config(
         &mut self,
         tab_config: crate::tab_configs::TabConfig,
@@ -22125,61 +22200,7 @@ impl TypedActionView for Workspace {
                 session_name,
             } => {
                 #[cfg(feature = "remote_sessions")]
-                {
-                    let key = local_host_key.clone();
-                    let name = session_name.clone();
-                    let map_key = (key.clone(), name.clone());
-                    if let Some(existing_id) = self.remote_attach_tabs.get(&map_key).copied() {
-                        if self.tabs.iter().any(|t| t.pane_group.id() == existing_id) {
-                            self.activate_tab_by_pane_group_id(existing_id, ctx);
-                            return;
-                        }
-                        self.remote_attach_tabs.remove(&map_key);
-                    }
-                    if let Some(config) = self.build_remote_attach_tab_config(&key, &name, ctx) {
-                        self.open_tab_config(config, ctx);
-                        if let Some(tab) = self.tabs.get(self.active_tab_index) {
-                            self.remote_attach_tabs.insert(map_key, tab.pane_group.id());
-                            let terminal_view = tab
-                                .pane_group
-                                .as_ref(ctx)
-                                .terminal_views(ctx)
-                                .into_iter()
-                                .next();
-                            if let Some(terminal_view) = terminal_view {
-                                let host_key = key.clone();
-                                let session_name = name.clone();
-                                ctx.subscribe_to_view(
-                                    &terminal_view,
-                                    move |_me, tv_handle, event, ctx| {
-                                        if let Some(session_id) =
-                                            tv_handle.as_ref(ctx).active_block_session_id()
-                                        {
-                                            let info = crate::terminal::remote_sessions::RemoteAttachInfo {
-                                                local_host_key: host_key.clone(),
-                                                session_name: session_name.clone(),
-                                            };
-                                            crate::terminal::remote_sessions::RemoteAttachRegistry::handle(ctx)
-                                                .update(ctx, |reg, ctx| {
-                                                    reg.record(session_id, info, ctx);
-                                                });
-                                        }
-                                        if matches!(event, crate::terminal::view::Event::Exited) {
-                                            ctx.dispatch_typed_action(
-                                                &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {
-                                                    local_host_key: host_key.clone(),
-                                                    session_name: session_name.clone(),
-                                                },
-                                            );
-                                        }
-                                    },
-                                );
-                            }
-                        }
-                    } else {
-                        log::warn!("OpenRemoteAttachTab: host {key} not found in settings");
-                    }
-                }
+                self.handle_open_remote_attach_tab(local_host_key, session_name, ctx);
                 #[cfg(not(feature = "remote_sessions"))]
                 {
                     let _ = (local_host_key, session_name);
