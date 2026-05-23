@@ -653,6 +653,10 @@ default = [
     "custom_inference_endpoints",
     "billing_and_usage_page_v2",
     "remote_code_review",
+    # Fork-specific: the gh-9416 Remote Sessions feature is the reason this
+    # fork exists, so it ships on by default. Keep this entry at the bottom
+    # to minimize rebase churn against upstream.
+    "remote_sessions",
 ]
 # Enable this feature to automatically perform heap profiling.  NOTE: This will
 # substantially slow down program execution.

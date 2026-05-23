@@ -313,7 +313,10 @@ elif [[ $RELEASE_CHANNEL = "oss" ]]; then
     WARP_SCHEME_NAME="warposs"
     # The OSS channel does not ship Sentry, so drop the cocoa_sentry feature
     # (which would otherwise pull in the Sentry framework dependency).
-    FEATURES="release_bundle,extern_plist"
+    # Fork-specific: explicitly include remote_sessions so the OSS release
+    # bundle ships with the gh-9416 feature even if a future refactor strips
+    # it from the default features list.
+    FEATURES="release_bundle,extern_plist,remote_sessions"
 fi
 
 OUT_DIR="target/$TARGET_PROFILE_DIR/bundle/osx"
