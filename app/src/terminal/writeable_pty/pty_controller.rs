@@ -695,10 +695,10 @@ impl<T: EventLoopSender> PtyController<T> {
                     command.ends_with('\n'),
                     "Tmux commands must end in a newlines so they are executed"
                 );
-                debug_assert!(
-                    self.tmux_control_mode.is_some(),
-                    "Received tmux command outside of control mode."
-                );
+                if self.tmux_control_mode.is_none() {
+                    log::warn!("dropping tmux command received outside control mode");
+                    return;
+                }
                 (command.into_bytes().into(), false, None, true)
             }
             PtyWrite::RunNativeShellCompletions(state) => {
