@@ -59,16 +59,29 @@ jobs:
             arch: x86_64
             rust_target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
-    env:
-      # `script/linux/bundle_deb` derives the package version from this. If
-      # unset, the .deb file name comes out malformed (`pkg__amd64.deb`).
-      # Drop the leading "fork-v" to match Debian's preferred version style.
-      GIT_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Compute Debian-safe version from release tag
+        # `script/linux/bundle_deb` writes the tag into the .deb Control file
+        # `Version:` field, which must start with a digit. Tags here look
+        # like `fork-v0.1.0-test`, so strip the `fork-v` (and any bare
+        # leading `v`) before exporting GIT_RELEASE_TAG. Without this dpkg-deb
+        # exits with: "Version field value 'fork-v…': version number does
+        # not start with digit".
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#fork-v}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then
+            echo "::error::Resolved version '$VERSION' (from tag '$TAG') does not start with a digit; Debian's dpkg will reject it. Use a tag like 'fork-v0.1.0' or pass --tag with a digit-prefixed value." >&2
+            exit 1
+          fi
+          echo "GIT_RELEASE_TAG=$VERSION" >> "$GITHUB_ENV"
+          echo "Tag '$TAG' → GIT_RELEASE_TAG '$VERSION'"
 
       - name: Prepare environment
         uses: ./.github/actions/prepare_environment
