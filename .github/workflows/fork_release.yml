@@ -41,14 +41,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: macOS arm64
-            os: macos-14
-            target_os: macos
-            arch: aarch64
-            rust_target: aarch64-apple-darwin
-            artifact: WarpOss-aarch64-apple-darwin.zip
           - label: macOS x86_64
-            os: macos-13
+            os: macos-15
             target_os: macos
             arch: x86_64
             rust_target: x86_64-apple-darwin
@@ -93,10 +87,7 @@ jobs:
       - name: Package macOS .app as zip
         if: matrix.target_os == 'macos'
         run: |
-          case "${{ matrix.rust_target }}" in
-            aarch64-apple-darwin) BUNDLE_DIR=target/aarch64-apple-darwin/release-lto/bundle/osx ;;
-            x86_64-apple-darwin)  BUNDLE_DIR=target/x86_64-apple-darwin/release-lto/bundle/osx ;;
-          esac
+          BUNDLE_DIR=target/${{ matrix.rust_target }}/release-lto/bundle/osx
           if [[ ! -d "$BUNDLE_DIR/WarpOss.app" ]]; then
             echo "Expected $BUNDLE_DIR/WarpOss.app to exist; found:" >&2
             ls -la "$BUNDLE_DIR" >&2
