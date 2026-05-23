@@ -34,6 +34,13 @@ on:
 permissions:
   contents: write
 
+env:
+  # GitHub-hosted runners don't ship FUSE; tell every AppImage we invoke
+  # (linuxdeploy, the AppImage we produce ourselves) to extract itself to a
+  # temp dir and run from there instead of trying to mount via FUSE. Mirrors
+  # the upstream `release_linux_x86` job in the deleted `create_release.yml`.
+  APPIMAGE_EXTRACT_AND_RUN: '1'
+
 jobs:
   build:
     name: Build (${{ matrix.label }})
