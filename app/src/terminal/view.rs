@@ -2883,6 +2883,29 @@ pub struct RemoteSessionContext {
     pub session_name: String,
 }
 
+#[cfg(feature = "remote_sessions")]
+const REMOTE_CWD_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[cfg(feature = "remote_sessions")]
+fn format_ide_ssh_target(host: &str, port: u16) -> String {
+    if port == 22 {
+        host.to_owned()
+    } else if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+#[cfg(feature = "remote_sessions")]
+fn warn_once_for_host(local_host_key: &str) -> bool {
+    use std::sync::Mutex;
+    static WARNED: std::sync::OnceLock<Mutex<HashSet<String>>> = std::sync::OnceLock::new();
+    let set = WARNED.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut guard = set.lock().expect("warn_once_for_host poisoned");
+    guard.insert(local_host_key.to_owned())
+}
+
 /// Parameters stashed when a code review pane open is requested with
 /// [`GitDeltaPreference::OnlyDirty`] but git status metadata is not yet available.
 /// Consumed once the per-repo [`GitRepoStatusModel`] delivers its first update.
@@ -22361,75 +22384,77 @@ impl TerminalView {
     ) {
         use crate::settings::remote_hosts::RemoteSessionsSettings;
         use crate::terminal::remote_sessions::socket_path_for;
+        use crate::terminal::remote_sessions::ssh_args::target_args;
 
         let settings = RemoteSessionsSettings::as_ref(ctx);
         let Some(host) = settings
             .hosts
-            .to_vec()
-            .into_iter()
+            .iter()
             .find(|h| h.local_host_key == context.local_host_key)
+            .cloned()
         else {
             self.show_error_toast(
-                "Remote host configuration was removed.".to_owned(),
+                "This remote host is no longer configured.".to_owned(),
                 ctx,
             );
             return;
         };
 
         let socket = socket_path_for(&context.local_host_key);
-        let control_path = format!("ControlPath={}", socket.display());
         let session_q = shell_words::quote(&context.session_name).into_owned();
-        let remote_cmd = format!(
-            "tmux display-message -p -t {sn} '#{{pane_current_path}}'",
-            sn = session_q
-        );
+        let remote_cmd =
+            format!("tmux display-message -p -t {session_q} '#{{pane_current_path}}'");
 
-        let mut ssh_args: Vec<String> = vec![
+        let mut ssh_args = vec![
             "-o".into(),
             "ControlMaster=no".into(),
             "-o".into(),
-            control_path,
-            "-p".into(),
-            host.port.to_string(),
+            format!("ControlPath={}", socket.display()),
+            "-o".into(),
+            "BatchMode=yes".into(),
+            "-o".into(),
+            "ConnectTimeout=5".into(),
         ];
-        if let Some(id) = host.identity_file.as_ref().filter(|s| !s.is_empty()) {
-            ssh_args.push("-i".into());
-            ssh_args.push(id.clone());
-        }
-        for opt in &host.ssh_options {
-            ssh_args.push(opt.clone());
-        }
-        ssh_args.push(host.host.clone());
+        ssh_args.extend(target_args(&host));
         ssh_args.push(remote_cmd);
 
-        let ide_ssh_target = if host.port != 22 {
-            format!("{}:{}", host.host, host.port)
-        } else {
-            host.host.clone()
-        };
-        if host.identity_file.as_deref().is_some_and(|s| !s.is_empty())
-            || !host.ssh_options.is_empty()
-        {
+        let ide_ssh_target = format_ide_ssh_target(&host.host, host.port);
+
+        let host_has_warp_only_ssh_config = host.identity_file_arg().is_some()
+            || !host.ssh_options.is_empty();
+        if host_has_warp_only_ssh_config && warn_once_for_host(&host.local_host_key) {
             log::warn!(
-                "Open in IDE: host '{}' has identity_file or ssh_options configured in Warp; \
-                 the IDE will only use settings from your ~/.ssh/config when connecting.",
-                host.alias
+                "Open in IDE: host '{alias}' has Identity file or SSH options configured in Warp; \
+                 the IDE will only use settings from your ~/.ssh/config when connecting. \
+                 See: https://github.com/ATERCATES/warp/issues/9416",
+                alias = host.alias,
             );
         }
+
         let editor_display_name = editor.display_name().to_owned();
         let future = async move {
+            use warpui::r#async::FutureExt as _;
             command::r#async::Command::new("ssh")
                 .args(ssh_args)
                 .output()
+                .with_timeout(REMOTE_CWD_QUERY_TIMEOUT)
                 .await
         };
         ctx.spawn(future, move |me, result, ctx| {
             let output = match result {
-                Ok(o) => o,
-                Err(err) => {
+                Ok(Ok(output)) => output,
+                Ok(Err(err)) => {
                     log::warn!("Failed to query remote cwd: {err}");
                     me.show_error_toast(
-                        format!("Could not query remote working directory: {err}"),
+                        format!("Could not query the remote working directory: {err}"),
+                        ctx,
+                    );
+                    return;
+                }
+                Err(_) => {
+                    log::warn!("Remote cwd query timed out");
+                    me.show_error_toast(
+                        "Querying the remote working directory timed out.".to_owned(),
                         ctx,
                     );
                     return;
@@ -22438,12 +22463,12 @@ impl TerminalView {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 log::warn!(
-                    "Remote tmux cwd query failed (exit {}): {}",
-                    output.status,
-                    stderr.trim()
+                    "Remote cwd query failed (exit {status}): {detail}",
+                    status = output.status,
+                    detail = stderr.trim()
                 );
                 me.show_error_toast(
-                    "Could not detect remote working directory from tmux.".to_owned(),
+                    "Could not detect the remote working directory.".to_owned(),
                     ctx,
                 );
                 return;
@@ -22451,7 +22476,7 @@ impl TerminalView {
             let pwd = String::from_utf8_lossy(&output.stdout).trim().to_owned();
             if pwd.is_empty() {
                 me.show_error_toast(
-                    "Remote tmux returned an empty working directory.".to_owned(),
+                    "The remote working directory is empty.".to_owned(),
                     ctx,
                 );
                 return;

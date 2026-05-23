@@ -1,34 +1,34 @@
 use crate::terminal::remote_sessions::types::RemoteTmuxSession;
 
-pub const SESSIONS_FORMAT: &str =
+pub(super) const SESSIONS_FORMAT: &str =
     "#{session_id}|#{session_name}|#{session_created}|#{session_attached}|#{pane_current_command}";
 
-pub const CONTROL_SESSION_NAME: &str = "__warp_ctrl";
+pub(super) const CONTROL_SESSION_NAME: &str = "__warp_ctrl";
 
-pub fn list_sessions_cmd() -> String {
-    format!("list-sessions -F '{}'", SESSIONS_FORMAT)
+pub(super) fn list_sessions_cmd() -> String {
+    format!("list-sessions -F '{SESSIONS_FORMAT}'")
 }
 
-pub fn new_session_cmd(name: &str, command: Option<&str>) -> String {
+pub(super) fn new_session_cmd(name: &str, command: Option<&str>) -> String {
+    let name = shell_escape(name);
     match command {
-        Some(c) if !c.is_empty() => format!(
-            "new-session -d -s {} {}",
-            shell_escape(name),
-            shell_escape(c)
-        ),
-        _ => format!("new-session -d -s {}", shell_escape(name)),
+        Some(c) if !c.is_empty() => format!("new-session -d -s {name} {cmd}", cmd = shell_escape(c)),
+        _ => format!("new-session -d -s {name}"),
     }
 }
 
-pub fn kill_session_cmd(name: &str) -> String {
-    format!("kill-session -t {}", shell_escape(name))
+pub(super) fn kill_session_cmd(name: &str) -> String {
+    format!("kill-session -t {name}", name = shell_escape(name))
 }
 
-pub fn heartbeat_cmd() -> &'static str {
+pub(super) fn heartbeat_cmd() -> &'static str {
     "display-message -p '#{client_pid}'"
 }
 
-pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec<RemoteTmuxSession> {
+pub(super) fn parse_sessions(
+    lines: &[String],
+    exclude_session_id: Option<&str>,
+) -> Vec<RemoteTmuxSession> {
     lines
         .iter()
         .filter_map(|l| {
@@ -74,3 +74,7 @@ fn shell_escape(s: &str) -> String {
         escaped
     }
 }
+
+#[cfg(test)]
+#[path = "commands_tests.rs"]
+mod tests;

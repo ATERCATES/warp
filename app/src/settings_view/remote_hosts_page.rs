@@ -585,11 +585,11 @@ fn render_host_row(
         .with_margin_top(2.)
         .finish(),
     );
-    if let Some(identity) = host.identity_file.as_ref().filter(|s| !s.is_empty()) {
+    if let Some(identity) = host.identity_file_arg() {
         details.add_child(
             Container::new(
                 Text::new_inline(
-                    identity.clone(),
+                    identity.to_owned(),
                     appearance.ui_font_family(),
                     ROW_FONT_SIZE,
                 )

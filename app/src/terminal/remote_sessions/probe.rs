@@ -6,6 +6,7 @@ use futures::io::{AsyncReadExt, AsyncWriteExt};
 use warpui::r#async::FutureExt as _;
 
 use crate::settings::remote_hosts::RemoteHost;
+use crate::terminal::remote_sessions::ssh_args::target_args;
 use crate::terminal::remote_sessions::types::{HostCapabilities, HostError};
 
 const PROBE_SCRIPT: &str = include_str!("../../../assets/bundled/ssh/bash_zsh/probe_remote_host.sh");
@@ -21,17 +22,7 @@ pub async fn probe_host(host: &RemoteHost) -> Result<HostCapabilities, HostError
         .arg("ConnectTimeout=8")
         .arg("-o")
         .arg("StrictHostKeyChecking=accept-new")
-        .arg("-p")
-        .arg(host.port.to_string());
-    if let Some(id) = &host.identity_file {
-        if !id.is_empty() {
-            cmd.arg("-i").arg(id);
-        }
-    }
-    for opt in &host.ssh_options {
-        cmd.arg(opt);
-    }
-    cmd.arg(&host.host)
+        .args(target_args(host))
         .arg("bash -s")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -96,7 +87,7 @@ fn extract_capabilities(out: &str) -> Result<HostCapabilities, HostError> {
         .map_err(|e| HostError::ProbeMalformed(format!("{e}: {json}")))
 }
 
-pub(crate) fn classify_ssh_error(stderr_text: &str) -> HostError {
+pub(super) fn classify_ssh_error(stderr_text: &str) -> HostError {
     let lower = stderr_text.to_ascii_lowercase();
     let detail = stderr_text
         .lines()
@@ -120,3 +111,7 @@ pub(crate) fn classify_ssh_error(stderr_text: &str) -> HostError {
         HostError::Other(detail)
     }
 }
+
+#[cfg(test)]
+#[path = "probe_tests.rs"]
+mod tests;

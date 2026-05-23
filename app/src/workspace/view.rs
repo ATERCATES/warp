@@ -6511,13 +6511,14 @@ impl Workspace {
         use crate::tab_configs::TabConfig;
         use crate::terminal::cli_agent_sessions::event::current_protocol_version;
         use crate::terminal::remote_sessions::socket_path_for;
+        use crate::terminal::remote_sessions::ssh_args::target_args_shell_quoted;
         use warp_core::channel::ChannelState;
         let settings = RemoteSessionsSettings::as_ref(ctx);
         let host = settings
             .hosts
-            .to_vec()
-            .into_iter()
-            .find(|h| h.local_host_key == local_host_key)?;
+            .iter()
+            .find(|h| h.local_host_key == local_host_key)
+            .cloned()?;
         let socket = socket_path_for(local_host_key);
         let warp_version = ChannelState::app_version()
             .map(|s| s.to_string())
@@ -6526,38 +6527,23 @@ impl Workspace {
         let session_q = shell_words::quote(session_name).into_owned();
         let version_q = shell_words::quote(&warp_version).into_owned();
         let remote_script = format!(
-            "tmux set-environment -t {sn} WARP_CLIENT_VERSION {wv} 2>/dev/null; \
-             tmux set-environment -t {sn} WARP_CLI_AGENT_PROTOCOL_VERSION {pv} 2>/dev/null; \
-             tmux set-option -t {sn} -ga update-environment 'WARP_CLIENT_VERSION WARP_CLI_AGENT_PROTOCOL_VERSION' 2>/dev/null; \
-             tmux set-option -t {sn} -g allow-passthrough on 2>/dev/null; \
-             export WARP_CLIENT_VERSION={wv}; \
-             export WARP_CLI_AGENT_PROTOCOL_VERSION={pv}; \
-             exec tmux attach -t {sn}",
-            sn = session_q,
-            wv = version_q,
-            pv = protocol_v
+            "tmux set-environment -t {session_q} WARP_CLIENT_VERSION {version_q} 2>/dev/null; \
+             tmux set-environment -t {session_q} WARP_CLI_AGENT_PROTOCOL_VERSION {protocol_v} 2>/dev/null; \
+             tmux set-option -t {session_q} -ga update-environment 'WARP_CLIENT_VERSION WARP_CLI_AGENT_PROTOCOL_VERSION' 2>/dev/null; \
+             tmux set-option -t {session_q} -g allow-passthrough on 2>/dev/null; \
+             export WARP_CLIENT_VERSION={version_q}; \
+             export WARP_CLI_AGENT_PROTOCOL_VERSION={protocol_v}; \
+             exec tmux attach -t {session_q}",
         );
-        let control_path = format!("ControlPath={}", socket.display());
         let mut parts: Vec<String> = vec![
             "ssh".into(),
             "-tt".into(),
             "-o".into(),
             "ControlMaster=no".into(),
             "-o".into(),
-            shell_words::quote(&control_path).into_owned(),
-            "-p".into(),
-            shell_words::quote(&host.port.to_string()).into_owned(),
+            shell_words::quote(&format!("ControlPath={}", socket.display())).into_owned(),
         ];
-        if let Some(id) = &host.identity_file {
-            if !id.is_empty() {
-                parts.push("-i".into());
-                parts.push(shell_words::quote(id).into_owned());
-            }
-        }
-        for opt in &host.ssh_options {
-            parts.push(shell_words::quote(opt).into_owned());
-        }
-        parts.push(shell_words::quote(&host.host).into_owned());
+        parts.extend(target_args_shell_quoted(&host));
         parts.push(shell_words::quote(&remote_script).into_owned());
         let command = format!("exec {}", parts.join(" "));
         Some(TabConfig {
@@ -6576,18 +6562,7 @@ impl Workspace {
             }],
             params: HashMap::new(),
             source_path: None,
-            metadata: Some({
-                let mut m = HashMap::new();
-                m.insert(
-                    "remote_sessions.local_host_key".into(),
-                    local_host_key.to_string(),
-                );
-                m.insert(
-                    "remote_sessions.session_name".into(),
-                    session_name.to_string(),
-                );
-                m
-            }),
+            metadata: None,
         })
     }
 

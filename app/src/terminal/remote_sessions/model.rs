@@ -88,10 +88,6 @@ impl RemoteSessionsModel {
         self.hosts.get(key)
     }
 
-    pub fn all_states(&self) -> impl Iterator<Item = &HostState> {
-        self.hosts.values()
-    }
-
     pub fn connect(
         &mut self,
         host: RemoteHost,
@@ -188,34 +184,28 @@ impl RemoteSessionsModel {
         command: Option<String>,
         ctx: &mut ModelContext<Self>,
     ) {
-        let conn = match self.connections.get(key).cloned() {
-            Some(c) => c,
-            None => return,
-        };
-        let _ = key;
-        ctx.spawn(
-            async move {
-                conn.send_command(new_session_cmd(&name, command.as_deref())).await
-            },
-            |_, result, _| {
-                if let Err(e) = result {
-                    log::warn!("create_session failed: {:?}", e);
-                }
-            },
-        );
+        self.run_session_cmd(key, new_session_cmd(&name, command.as_deref()), "create_session", ctx);
     }
 
     pub fn kill_session(&mut self, key: &str, name: String, ctx: &mut ModelContext<Self>) {
-        let conn = match self.connections.get(key).cloned() {
-            Some(c) => c,
-            None => return,
+        self.run_session_cmd(key, kill_session_cmd(&name), "kill_session", ctx);
+    }
+
+    fn run_session_cmd(
+        &mut self,
+        key: &str,
+        cmd: String,
+        label: &'static str,
+        ctx: &mut ModelContext<Self>,
+    ) {
+        let Some(conn) = self.connections.get(key).cloned() else {
+            return;
         };
-        let _ = key;
         ctx.spawn(
-            async move { conn.send_command(kill_session_cmd(&name)).await },
-            |_, result, _| {
+            async move { conn.send_command(cmd).await },
+            move |_, result, _| {
                 if let Err(e) = result {
-                    log::warn!("kill_session failed: {:?}", e);
+                    log::warn!("{label} failed: {e:?}");
                 }
             },
         );
