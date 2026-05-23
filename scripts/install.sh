@@ -41,8 +41,11 @@ detect_platform() {
   case "$uname_s" in
     Darwin)
       case "$uname_m" in
-        arm64|aarch64) echo "macos-aarch64" ;;
-        x86_64)        echo "macos-x86_64" ;;
+        x86_64) echo "macos-x86_64" ;;
+        arm64|aarch64)
+          fail "macOS arm64 is not published by this fork. Run on an Intel Mac, \
+or build locally: cargo build --release --bin warp-oss --features warp/remote_sessions"
+          ;;
         *) fail "Unsupported macOS arch: $uname_m" ;;
       esac
       ;;
@@ -58,9 +61,8 @@ detect_platform() {
 
 artifact_for_platform() {
   case "$1" in
-    macos-aarch64) echo "WarpOss-aarch64-apple-darwin.zip" ;;
-    macos-x86_64)  echo "WarpOss-x86_64-apple-darwin.zip" ;;
-    linux-x86_64)  echo "WarpOss-x86_64-linux.AppImage" ;;
+    macos-x86_64) echo "WarpOss-x86_64-apple-darwin.zip" ;;
+    linux-x86_64) echo "WarpOss-x86_64-linux.AppImage" ;;
   esac
 }
 
