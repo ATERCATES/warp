@@ -1,10 +1,9 @@
 use enum_iterator::all;
 use warp_core::ui::theme::color::internal_colors;
-use warp_core::ui::theme::Fill;
 use warp_core::ui::Icon;
 use warpui::elements::{
-    ConstrainedBox, Container, CornerRadius, CrossAxisAlignment, Element, Flex, Hoverable,
-    MainAxisAlignment, MainAxisSize, MouseStateHandle, ParentElement, Radius, Shrinkable, Text,
+    Container, CornerRadius, CrossAxisAlignment, Element, Flex, Hoverable, MainAxisAlignment,
+    MainAxisSize, MouseStateHandle, ParentElement, Radius, Shrinkable, Text,
 };
 use warpui::platform::Cursor;
 use warpui::{AppContext, SingletonEntity};
@@ -14,15 +13,13 @@ use crate::terminal::cli_agent::CLIAgent;
 use crate::terminal::remote_sessions::RemoteTmuxSession;
 use crate::ui_components::icon_with_status::{render_icon_with_status, IconWithStatusVariant};
 
+use super::common::{
+    render_icon_action, ACTION_GAP, ICON_WITH_STATUS_GAP, ROW_CORNER_RADIUS,
+    VERTICAL_TABS_ICON_SIZE,
+};
 use super::view::RemoteSessionsPanelAction;
 
-const VERTICAL_TABS_ICON_SIZE: f32 = 24.;
-const ICON_WITH_STATUS_GAP: f32 = 8.;
-const ROW_CORNER_RADIUS: f32 = 4.;
 const ROW_LEFT_INDENT: f32 = 24.;
-const ACTION_ICON_BOX: f32 = 22.;
-const ACTION_ICON_SIZE: f32 = 12.;
-const ACTION_GAP: f32 = 2.;
 
 pub struct SessionRowProps<'a> {
     pub host_key: String,
@@ -169,35 +166,3 @@ fn format_subtitle(current_command: &str, is_attached: bool, attached_count: u32
     }
 }
 
-fn render_icon_action(
-    icon: Icon,
-    action: RemoteSessionsPanelAction,
-    button_state: MouseStateHandle,
-    appearance: &Appearance,
-) -> Box<dyn Element> {
-    let theme = appearance.theme();
-    let pad = (ACTION_ICON_BOX - ACTION_ICON_SIZE) / 2.;
-    Hoverable::new(button_state, move |mouse_state| {
-        let color: Fill = if mouse_state.is_hovered() {
-            theme.main_text_color(theme.background())
-        } else {
-            theme.sub_text_color(theme.background())
-        };
-        let glyph = ConstrainedBox::new(icon.to_warpui_icon(color).finish())
-            .with_width(ACTION_ICON_SIZE)
-            .with_height(ACTION_ICON_SIZE)
-            .finish();
-        let mut container = Container::new(glyph)
-            .with_uniform_padding(pad)
-            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(4.)));
-        if mouse_state.is_hovered() {
-            container = container.with_background(internal_colors::fg_overlay_2(theme));
-        }
-        container.finish()
-    })
-    .with_cursor(Cursor::PointingHand)
-    .on_click(move |ctx, _, _| {
-        ctx.dispatch_typed_action(action.clone());
-    })
-    .finish()
-}

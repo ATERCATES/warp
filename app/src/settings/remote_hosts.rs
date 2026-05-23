@@ -29,6 +29,10 @@ impl RemoteHost {
     pub fn new_local_host_key() -> String {
         uuid::Uuid::new_v4().to_string()
     }
+
+    pub fn identity_file_arg(&self) -> Option<&str> {
+        self.identity_file.as_deref().filter(|s| !s.is_empty())
+    }
 }
 
 maybe_define_setting!(RemoteSessionsHosts, group: RemoteSessionsSettings, {

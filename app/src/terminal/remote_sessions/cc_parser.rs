@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use async_process::ChildStdout;
-use futures::io::{AsyncBufReadExt, BufReader};
+use futures::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ControlEvent {
@@ -45,15 +43,15 @@ pub enum ControlEvent {
     Unknown(String),
 }
 
-pub struct CcStream {
-    reader: BufReader<ChildStdout>,
+pub struct CcStream<R = ChildStdout> {
+    reader: BufReader<R>,
     pending_block: Option<(u32, bool, Vec<String>)>,
 }
 
-impl CcStream {
-    pub fn new(stdout: ChildStdout) -> Self {
+impl<R: AsyncRead + Unpin> CcStream<R> {
+    pub fn new(reader: R) -> Self {
         Self {
-            reader: BufReader::new(stdout),
+            reader: BufReader::new(reader),
             pending_block: None,
         }
     }
@@ -161,4 +159,6 @@ fn parse_block_header_id(s: &str) -> Option<u32> {
     Some(id)
 }
 
-pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(test)]
+#[path = "cc_parser_tests.rs"]
+mod tests;

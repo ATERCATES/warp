@@ -15,27 +15,21 @@ use warpui::r#async::executor::{Background, BackgroundTask};
 use warpui::r#async::{FutureExt as _, Timer};
 
 use crate::settings::remote_hosts::RemoteHost;
-use crate::terminal::remote_sessions::cc_parser::{CcStream, ControlEvent, HEARTBEAT_TIMEOUT};
+use crate::terminal::remote_sessions::cc_parser::{CcStream, ControlEvent};
 use crate::terminal::remote_sessions::commands::{
     heartbeat_cmd, list_sessions_cmd, parse_sessions,
 };
 use crate::terminal::remote_sessions::probe::classify_ssh_error;
+use crate::terminal::remote_sessions::ssh_args::target_args;
 use crate::terminal::remote_sessions::types::{HostError, RemoteTmuxSession};
 
 const MASTER_PROBE_ATTEMPTS: u32 = 20;
 const MASTER_PROBE_DELAY: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct ConnectionConfig {
     pub heartbeat_interval: Duration,
-}
-
-impl Default for ConnectionConfig {
-    fn default() -> Self {
-        Self {
-            heartbeat_interval: Duration::from_secs(30),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -53,7 +47,6 @@ enum Pending {
 type PendingQueue = Arc<Mutex<VecDeque<Pending>>>;
 
 pub struct RemoteHostConnection {
-    pub local_host_key: String,
     pub socket_path: PathBuf,
     host: String,
     child: Arc<Mutex<Option<Child>>>,
@@ -83,17 +76,7 @@ impl RemoteHostConnection {
             .arg(format!("ControlPath={}", socket_path.display()))
             .arg("-o")
             .arg("BatchMode=yes")
-            .arg("-p")
-            .arg(host.port.to_string());
-        if let Some(id) = &host.identity_file {
-            if !id.is_empty() {
-                cmd.arg("-i").arg(id);
-            }
-        }
-        for opt in &host.ssh_options {
-            cmd.arg(opt);
-        }
-        cmd.arg(&host.host)
+            .args(target_args(host))
             .arg("tmux -CC new-session -A -s __warp_ctrl")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -128,7 +111,6 @@ impl RemoteHostConnection {
         );
 
         Ok(Self {
-            local_host_key: host.local_host_key.clone(),
             socket_path,
             host: host.host.clone(),
             child: Arc::new(Mutex::new(Some(child))),
@@ -168,13 +150,13 @@ impl RemoteHostConnection {
             let _ = child.kill();
         }
         self.stdin.lock().await.take();
-        let _ = stop_master(&self.host, &self.socket_path).await;
+        stop_master(&self.host, &self.socket_path).await;
     }
 }
 
-async fn stop_master(host: &str, socket_path: &Path) -> std::io::Result<()> {
+async fn stop_master(host: &str, socket_path: &Path) {
     if !socket_path.exists() {
-        return Ok(());
+        return;
     }
     let mut exit = Command::new("ssh");
     exit.arg("-O")
@@ -190,7 +172,6 @@ async fn stop_master(host: &str, socket_path: &Path) -> std::io::Result<()> {
     if socket_path.exists() {
         let _ = std::fs::remove_file(socket_path);
     }
-    Ok(())
 }
 
 fn spawn_reader_task(
@@ -392,18 +373,7 @@ async fn ensure_master(host: &RemoteHost, socket_path: &Path) -> Result<(), Host
         .arg("BatchMode=yes")
         .arg("-o")
         .arg("ConnectTimeout=10")
-        .arg("-p")
-        .arg(host.port.to_string());
-    if let Some(id) = &host.identity_file {
-        if !id.is_empty() {
-            master.arg("-i").arg(id);
-        }
-    }
-    for opt in &host.ssh_options {
-        master.arg(opt);
-    }
-    master
-        .arg(&host.host)
+        .args(target_args(host))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
