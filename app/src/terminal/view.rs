@@ -9090,6 +9090,14 @@ impl TerminalView {
             });
         }
 
+        #[cfg(feature = "remote_sessions")]
+        if spawning_command.contains("tmux -Lwarp -CC") {
+            let active_session_id = self.active_block_session_id();
+            self.warpify_state.on_warpify_start(active_session_id);
+            self.refresh_warp_prompt(ctx);
+            return;
+        }
+
         let warpification_source = match session_type {
             BootstrapSessionType::WarpifiedRemote => WarpificationSource::Ssh,
             BootstrapSessionType::Local => WarpificationSource::Subshell,
