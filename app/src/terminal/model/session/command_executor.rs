@@ -191,7 +191,7 @@ fn new_command_executor_for_local_tty_session(
         }
     }
 
-    if FeatureFlag::SSHTmuxWrapper.is_enabled()
+    if (FeatureFlag::SSHTmuxWrapper.is_enabled() || FeatureFlag::RemoteSessions.is_enabled())
         && session_info.tmux_control_mode
         // We don't allow nested tmux warpification, so if our parent session is already warified using
         // tmux then we shouldn't.

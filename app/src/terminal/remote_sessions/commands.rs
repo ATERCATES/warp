@@ -1,9 +1,4 @@
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine as _;
-use warpui::AssetProvider;
-
 use crate::terminal::remote_sessions::types::RemoteTmuxSession;
-use crate::terminal::shell::ShellType;
 
 pub const SESSIONS_FORMAT: &str =
     "#{session_id}|#{session_name}|#{session_created}|#{session_attached}|#{pane_current_command}";
@@ -33,41 +28,12 @@ pub fn heartbeat_cmd() -> &'static str {
     "display-message -p '#{client_pid}'"
 }
 
-pub struct WarpifySessionCmds {
-    pub write: String,
-    pub send_keys: String,
-}
-
-pub fn warpify_session_cmds(
-    session_name: &str,
-    shell_type: ShellType,
-    assets: &dyn AssetProvider,
-) -> WarpifySessionCmds {
-    use crate::terminal::bootstrap::init_shell_script_for_shell;
-    let script = init_shell_script_for_shell(shell_type, assets);
-    let b64 = BASE64_STANDARD.encode(script);
-    let path = format!("/tmp/warp-init-{}.sh", sanitize_for_filename(session_name));
-    let source_keys = format!(" . {path}; rm -f {path}; clear");
-    WarpifySessionCmds {
-        write: format!("run-shell \"printf %s {b64} | base64 -d > {path}\""),
-        send_keys: format!(
-            "send-keys -t {} -- {} Enter",
-            shell_escape(session_name),
-            shell_escape(&source_keys),
-        ),
-    }
-}
-
-fn sanitize_for_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
+pub fn is_safe_session_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().all(|c| {
+            !c.is_control()
+                && !matches!(c, ';' | '"' | '\'' | '\\' | '$' | '`' | '\n' | '\r')
         })
-        .collect()
 }
 
 pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec<RemoteTmuxSession> {
@@ -81,6 +47,10 @@ pub fn parse_sessions(lines: &[String], exclude_session_id: Option<&str>) -> Vec
             }
             let name = parts.next()?.to_string();
             if name == CONTROL_SESSION_NAME {
+                return None;
+            }
+            if !is_safe_session_name(&name) {
+                log::warn!("rejecting remote session with unsafe name: {name:?}");
                 return None;
             }
             let created = parts.next()?.parse().ok()?;

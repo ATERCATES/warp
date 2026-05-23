@@ -6507,9 +6507,7 @@ impl Workspace {
         use crate::settings::remote_hosts::RemoteSessionsSettings;
         use crate::tab_configs::tab_config::{TabConfigPaneNode, TabConfigPaneType};
         use crate::tab_configs::TabConfig;
-        use crate::terminal::cli_agent_sessions::event::current_protocol_version;
         use crate::terminal::remote_sessions::socket_path_for;
-        use warp_core::channel::ChannelState;
         let settings = RemoteSessionsSettings::as_ref(ctx);
         let host = settings
             .hosts
@@ -6517,24 +6515,8 @@ impl Workspace {
             .into_iter()
             .find(|h| h.local_host_key == local_host_key)?;
         let socket = socket_path_for(local_host_key);
-        let warp_version = ChannelState::app_version()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "local".to_string());
-        let protocol_v = current_protocol_version();
         let session_q = shell_words::quote(session_name).into_owned();
-        let version_q = shell_words::quote(&warp_version).into_owned();
-        let remote_script = format!(
-            "tmux set-environment -t {sn} WARP_CLIENT_VERSION {wv} 2>/dev/null; \
-             tmux set-environment -t {sn} WARP_CLI_AGENT_PROTOCOL_VERSION {pv} 2>/dev/null; \
-             tmux set-option -t {sn} -ga update-environment 'WARP_CLIENT_VERSION WARP_CLI_AGENT_PROTOCOL_VERSION' 2>/dev/null; \
-             tmux set-option -t {sn} -g allow-passthrough on 2>/dev/null; \
-             export WARP_CLIENT_VERSION={wv}; \
-             export WARP_CLI_AGENT_PROTOCOL_VERSION={pv}; \
-             exec tmux -CC attach -t {sn}",
-            sn = session_q,
-            wv = version_q,
-            pv = protocol_v
-        );
+        let remote_script = format!("exec tmux -Lwarp -CC new-session -A -s {}", session_q);
         let control_path = format!("ControlPath={}", socket.display());
         let mut parts: Vec<String> = vec![
             "ssh".into(),
@@ -6557,7 +6539,7 @@ impl Workspace {
         }
         parts.push(shell_words::quote(&host.host).into_owned());
         parts.push(shell_words::quote(&remote_script).into_owned());
-        let command = format!("exec {}", parts.join(" "));
+        let command = parts.join(" ");
         Some(TabConfig {
             name: format!("{} · {}", host.alias, session_name),
             title: Some(format!("{}: {}", host.alias, session_name)),
@@ -6596,10 +6578,7 @@ impl Workspace {
         session_name: &str,
         ctx: &mut ViewContext<Self>,
     ) {
-        use crate::terminal::remote_sessions::{
-            RemoteAttachInfo, RemoteAttachRegistry, RemoteSessionsModel,
-        };
-        use crate::terminal::shell::ShellType;
+        use crate::terminal::remote_sessions::{RemoteAttachInfo, RemoteAttachRegistry};
 
         let map_key = (local_host_key.to_string(), session_name.to_string());
         if let Some(existing_id) = self.remote_attach_tabs.get(&map_key).copied() {
@@ -6635,9 +6614,14 @@ impl Workspace {
                             session_name: name.clone(),
                         };
                         RemoteAttachRegistry::handle(ctx)
-                            .update(ctx, |reg, ctx| reg.record(session_id, info, ctx));
+                            .update(ctx, |reg, ctx| reg.record_if_absent(session_id, info, ctx));
                     }
                     if matches!(event, crate::terminal::view::Event::Exited) {
+                        if let Some(session_id) = tv_handle.as_ref(ctx).active_block_session_id() {
+                            RemoteAttachRegistry::handle(ctx).update(ctx, |reg, ctx| {
+                                reg.forget_session(session_id, ctx)
+                            });
+                        }
                         ctx.dispatch_typed_action(
                             &crate::workspace::WorkspaceAction::CloseRemoteAttachTab {
                                 local_host_key: host_key.clone(),
@@ -6648,22 +6632,6 @@ impl Workspace {
                 });
             }
         }
-
-        let host_key = local_host_key.to_string();
-        let name = session_name.to_string();
-        ctx.spawn(
-            async move {
-                warpui::r#async::Timer::after(std::time::Duration::from_millis(1500)).await;
-            },
-            move |_me, _, ctx| {
-                let model = RemoteSessionsModel::handle(ctx);
-                let shell_type = model
-                    .as_ref(ctx)
-                    .detect_session_shell(&host_key, &name)
-                    .unwrap_or(ShellType::Bash);
-                model.update(ctx, |m, ctx| m.warpify_session(&host_key, name.clone(), shell_type, ctx));
-            },
-        );
     }
 
     pub(crate) fn open_tab_config(
@@ -22185,10 +22153,7 @@ impl TypedActionView for Workspace {
                             self.remove_tab(index, false, true, ctx);
                         }
                     }
-                    crate::terminal::remote_sessions::RemoteAttachRegistry::handle(ctx).update(
-                        ctx,
-                        |reg, ctx| reg.forget_by_host(local_host_key, session_name, ctx),
-                    );
+                    let _ = (local_host_key, session_name);
                 }
                 #[cfg(not(feature = "remote_sessions"))]
                 {

@@ -26,24 +26,22 @@ impl RemoteAttachRegistry {
         let _ = handle;
     }
 
-    pub fn record(
+    pub fn record_if_absent(
         &mut self,
         session_id: SessionId,
         info: RemoteAttachInfo,
         _ctx: &mut ModelContext<Self>,
     ) {
-        self.by_session.insert(session_id, info);
+        self.by_session.entry(session_id).or_insert(info);
     }
 
-    pub fn forget_by_host(
-        &mut self,
-        local_host_key: &str,
-        session_name: &str,
-        _ctx: &mut ModelContext<Self>,
-    ) {
-        self.by_session.retain(|_, info| {
-            !(info.local_host_key == local_host_key && info.session_name == session_name)
-        });
+    pub fn forget_session(&mut self, session_id: SessionId, _ctx: &mut ModelContext<Self>) {
+        self.by_session.remove(&session_id);
+    }
+
+    pub fn forget_host(&mut self, local_host_key: &str, _ctx: &mut ModelContext<Self>) {
+        self.by_session
+            .retain(|_, info| info.local_host_key != local_host_key);
     }
 
     pub fn lookup(&self, session_id: SessionId) -> Option<&RemoteAttachInfo> {

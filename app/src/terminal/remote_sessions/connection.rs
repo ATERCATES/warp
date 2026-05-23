@@ -94,7 +94,7 @@ impl RemoteHostConnection {
             cmd.arg(opt);
         }
         cmd.arg(&host.host)
-            .arg("tmux -CC new-session -A -s __warp_ctrl")
+            .arg("tmux -Lwarp -CC new-session -A -s __warp_ctrl")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

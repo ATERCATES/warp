@@ -10,10 +10,7 @@ use warpui::r#async::executor::{Background, BackgroundTask};
 use warpui::{AppContext, Entity, ModelContext, ModelHandle, ModelSpawner, SingletonEntity};
 
 use crate::settings::remote_hosts::{RemoteHost, RemoteSessionsSettings};
-use crate::terminal::remote_sessions::commands::{
-    kill_session_cmd, new_session_cmd, warpify_session_cmds,
-};
-use crate::terminal::shell::ShellType;
+use crate::terminal::remote_sessions::commands::{kill_session_cmd, new_session_cmd};
 use crate::terminal::remote_sessions::connection::{
     ConnectionConfig, ConnectionEvent, RemoteHostConnection,
 };
@@ -206,37 +203,6 @@ impl RemoteSessionsModel {
                 }
             },
         );
-    }
-
-    pub fn warpify_session(
-        &mut self,
-        key: &str,
-        name: String,
-        shell_type: ShellType,
-        ctx: &mut ModelContext<Self>,
-    ) {
-        let Some(conn) = self.connections.get(key).cloned() else {
-            return;
-        };
-        let cmds = warpify_session_cmds(&name, shell_type, &crate::ASSETS);
-        ctx.spawn(
-            async move {
-                conn.send_command(cmds.write).await?;
-                conn.send_command(cmds.send_keys).await?;
-                Ok::<_, crate::terminal::remote_sessions::HostError>(())
-            },
-            |_, result, _| {
-                if let Err(e) = result {
-                    log::warn!("warpify_session failed: {:?}", e);
-                }
-            },
-        );
-    }
-
-    pub fn detect_session_shell(&self, key: &str, name: &str) -> Option<ShellType> {
-        let state = self.hosts.get(key)?;
-        let session = state.sessions.iter().find(|s| s.name == name)?;
-        ShellType::from_name(session.current_command.trim())
     }
 
     pub fn kill_session(&mut self, key: &str, name: String, ctx: &mut ModelContext<Self>) {
