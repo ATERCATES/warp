@@ -2870,6 +2870,16 @@ pub struct TerminalView {
     /// State handle for the shimmering text animation in the remote server loading footer.
     /// Persisted across renders so the animation doesn't restart.
     remote_server_shimmer_handle: ShimmeringTextStateHandle,
+
+    #[cfg(feature = "remote_sessions")]
+    remote_session_context: Option<RemoteSessionContext>,
+}
+
+#[cfg(feature = "remote_sessions")]
+#[derive(Clone, Debug)]
+pub struct RemoteSessionContext {
+    pub local_host_key: String,
+    pub session_name: String,
 }
 
 /// Parameters stashed when a code review pane open is requested with
@@ -4209,6 +4219,8 @@ impl TerminalView {
             focus_handle: None,
             sessions,
             remote_server_shimmer_handle: ShimmeringTextStateHandle::new(),
+            #[cfg(feature = "remote_sessions")]
+            remote_session_context: None,
             active_block_metadata: None,
             block_text_selection_start_position: None,
             background_executor: ctx.background_executor().clone(),
@@ -22269,11 +22281,22 @@ impl TerminalView {
         self.warpify_state.last_warpified_ssh_host()
     }
 
+    #[cfg(feature = "remote_sessions")]
+    pub fn set_remote_session_context(&mut self, context: RemoteSessionContext) {
+        self.remote_session_context = Some(context);
+    }
+
     fn open_working_dir_in_editor(
         &mut self,
         editor: WorkingDirEditor,
         ctx: &mut ViewContext<Self>,
     ) {
+        #[cfg(feature = "remote_sessions")]
+        if let Some(context) = self.remote_session_context.clone() {
+            self.open_in_editor_via_remote_session(editor, context, ctx);
+            return;
+        }
+
         let bin = editor.command();
         let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
             command::blocking::Command::new(bin)
@@ -22308,6 +22331,122 @@ impl TerminalView {
                 ctx,
             );
         }
+    }
+
+    #[cfg(feature = "remote_sessions")]
+    fn open_in_editor_via_remote_session(
+        &mut self,
+        editor: WorkingDirEditor,
+        context: RemoteSessionContext,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        use crate::settings::remote_hosts::RemoteSessionsSettings;
+        use crate::terminal::remote_sessions::socket_path_for;
+
+        let settings = RemoteSessionsSettings::as_ref(ctx);
+        let Some(host) = settings
+            .hosts
+            .to_vec()
+            .into_iter()
+            .find(|h| h.local_host_key == context.local_host_key)
+        else {
+            self.show_error_toast(
+                "Remote host configuration was removed.".to_owned(),
+                ctx,
+            );
+            return;
+        };
+
+        let socket = socket_path_for(&context.local_host_key);
+        let control_path = format!("ControlPath={}", socket.display());
+        let session_q = shell_words::quote(&context.session_name).into_owned();
+        let remote_cmd = format!(
+            "tmux display-message -p -t {sn} '#{{pane_current_path}}'",
+            sn = session_q
+        );
+
+        let mut ssh_args: Vec<String> = vec![
+            "-o".into(),
+            "ControlMaster=no".into(),
+            "-o".into(),
+            control_path,
+            "-p".into(),
+            host.port.to_string(),
+        ];
+        if let Some(id) = host.identity_file.as_ref().filter(|s| !s.is_empty()) {
+            ssh_args.push("-i".into());
+            ssh_args.push(id.clone());
+        }
+        for opt in &host.ssh_options {
+            ssh_args.push(opt.clone());
+        }
+        ssh_args.push(host.host.clone());
+        ssh_args.push(remote_cmd);
+
+        let ide_ssh_target = if host.port != 22 {
+            format!("{}:{}", host.host, host.port)
+        } else {
+            host.host.clone()
+        };
+        if host.identity_file.as_deref().is_some_and(|s| !s.is_empty())
+            || !host.ssh_options.is_empty()
+        {
+            log::warn!(
+                "Open in IDE: host '{}' has identity_file or ssh_options configured in Warp; \
+                 the IDE will only use settings from your ~/.ssh/config when connecting.",
+                host.alias
+            );
+        }
+        let editor_display_name = editor.display_name().to_owned();
+        let future = async move {
+            command::r#async::Command::new("ssh")
+                .args(ssh_args)
+                .output()
+                .await
+        };
+        ctx.spawn(future, move |me, result, ctx| {
+            let output = match result {
+                Ok(o) => o,
+                Err(err) => {
+                    log::warn!("Failed to query remote cwd: {err}");
+                    me.show_error_toast(
+                        format!("Could not query remote working directory: {err}"),
+                        ctx,
+                    );
+                    return;
+                }
+            };
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log::warn!(
+                    "Remote tmux cwd query failed (exit {}): {}",
+                    output.status,
+                    stderr.trim()
+                );
+                me.show_error_toast(
+                    "Could not detect remote working directory from tmux.".to_owned(),
+                    ctx,
+                );
+                return;
+            }
+            let pwd = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if pwd.is_empty() {
+                me.show_error_toast(
+                    "Remote tmux returned an empty working directory.".to_owned(),
+                    ctx,
+                );
+                return;
+            }
+            let bin = editor.command();
+            let args = editor.ssh_remote_args(&ide_ssh_target, &pwd);
+            if let Err(err) = command::blocking::Command::new(bin).args(&args).spawn() {
+                log::warn!("Failed to launch `{bin} {args:?}`: {err}");
+                me.show_error_toast(
+                    format!("Could not launch {editor_display_name}: {err}"),
+                    ctx,
+                );
+            }
+        });
     }
 
     pub fn shell_launch_data_if_local(&self, ctx: &AppContext) -> Option<ShellLaunchData> {

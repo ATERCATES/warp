@@ -22145,6 +22145,14 @@ impl TypedActionView for Workspace {
                             if let Some(terminal_view) = terminal_view {
                                 let host_key = key.clone();
                                 let session_name = name.clone();
+                                terminal_view.update(ctx, |tv, _| {
+                                    tv.set_remote_session_context(
+                                        crate::terminal::view::RemoteSessionContext {
+                                            local_host_key: host_key.clone(),
+                                            session_name: session_name.clone(),
+                                        },
+                                    );
+                                });
                                 ctx.subscribe_to_view(
                                     &terminal_view,
                                     move |_me, _, event, ctx| {
