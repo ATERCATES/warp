@@ -67,6 +67,7 @@ pub use action::{AgentOnboardingVersion, OnboardingIntention, OnboardingVersion,
 use ai::api_keys::{ApiKeyManager, AwsCredentialsState};
 use ai::index::full_source_code_embedding::manager::{BuildSource, CodebaseIndexManager};
 use async_channel::{Receiver, Sender};
+use base64::Engine as _;
 use block_banner::{render_warpification_banner, WarpificationMode, WarpifyBannerState};
 pub use block_banner::{WithinBlockBanner, BLOCK_BANNER_HEIGHT};
 use block_onboarding::onboarding_agentic_suggestions_block::{
@@ -262,11 +263,11 @@ use crate::ai::blocklist::{
     BlocklistAIContextModel, BlocklistAIController, BlocklistAIControllerEvent,
     BlocklistAIHistoryEvent, BlocklistAIHistoryModel, BlocklistAIInputEvent, BlocklistAIInputModel,
     ClientIdentifiers, ConversationStatusUpdate, InputConfig, InputType,
-    LegacyPassiveSuggestionsEvent, LegacyPassiveSuggestionsModel, MaaPassiveSuggestionsEvent,
-    MaaPassiveSuggestionsModel, PassiveSuggestionsModels, PendingQueryState,
-    RequestFileEditsFormatKind, ShellCommandExecutor, ShellCommandExecutorEvent,
-    SlashCommandRequest, StartAgentExecutor, StartAgentExecutorEvent, StartAgentRequest,
-    ATTACH_AS_AGENT_MODE_CONTEXT_TEXT, PRE_REWIND_PREFIX,
+    InputTypeAutoDetectionSource, LegacyPassiveSuggestionsEvent, LegacyPassiveSuggestionsModel,
+    MaaPassiveSuggestionsEvent, MaaPassiveSuggestionsModel, PassiveSuggestionsModels,
+    PendingAttachment, PendingQueryState, RequestFileEditsFormatKind, ShellCommandExecutor,
+    ShellCommandExecutorEvent, SlashCommandRequest, StartAgentExecutor, StartAgentExecutorEvent,
+    StartAgentRequest, ATTACH_AS_AGENT_MODE_CONTEXT_TEXT, PRE_REWIND_PREFIX,
 };
 use crate::ai::conversation_utils;
 use crate::ai::document::ai_document_model::{AIDocumentId, AIDocumentModel, AIDocumentVersion};
@@ -3424,7 +3425,7 @@ impl TerminalView {
             if !model.is_autodetection_enabled_for_current_context(ctx) {
                 if let Some(input_config) = initial_input_config {
                     let is_input_buffer_empty = true;
-                    model.set_input_config(input_config, is_input_buffer_empty, ctx);
+                    model.set_input_config(input_config, is_input_buffer_empty, None, ctx);
                 }
             }
             model
@@ -5361,9 +5362,6 @@ impl TerminalView {
             | BlocklistAIHistoryEvent::UpdatedConversationStatus {
                 conversation_id, ..
             }
-            | BlocklistAIHistoryEvent::UpdatedConversationMetadata {
-                conversation_id, ..
-            }
             | BlocklistAIHistoryEvent::UpdatedConversationArtifacts {
                 conversation_id, ..
             } => history_model.terminal_view_id_for_conversation(conversation_id),
@@ -5371,6 +5369,9 @@ impl TerminalView {
                 new_conversation_id,
                 ..
             } => history_model.terminal_view_id_for_conversation(new_conversation_id),
+            BlocklistAIHistoryEvent::UpdatedConversationMetadata {
+                conversation_id, ..
+            } => history_model.terminal_view_id_for_conversation(conversation_id),
             BlocklistAIHistoryEvent::StartedNewConversation { .. }
             | BlocklistAIHistoryEvent::CreatedSubtask { .. }
             | BlocklistAIHistoryEvent::UpgradedTask { .. }
@@ -5823,10 +5824,9 @@ impl TerminalView {
                 // The conversation has moved to another terminal view. We are
                 // the previous owner (the per-view filter at the top of this
                 // function uses `previous_terminal_view_id`), so drop any
-                // rendered AI blocks and agent-view entry blocks tagged to
-                // this conversation. Otherwise the user sees a transcript
-                // split across two panes (old exchanges here, new exchanges
-                // in the new owner).
+                // rendered blocks tagged to this conversation. Leave the
+                // agent-view entry in place so the user can click it to
+                // navigate to the current owner pane later.
                 if *previous_terminal_view_id != self.view_id {
                     return;
                 }
@@ -5834,16 +5834,12 @@ impl TerminalView {
                     .rich_content_views
                     .iter()
                     .filter_map(|view| {
-                        let belongs_to_conversation = match view.metadata() {
-                            Some(RichContentMetadata::AIBlock(metadata)) => {
-                                metadata.conversation_id == *conversation_id
-                            }
-                            Some(RichContentMetadata::AgentViewEntry(metadata)) => {
-                                metadata.conversation_id == *conversation_id
-                            }
-                            _ => false,
-                        };
-                        belongs_to_conversation.then_some(view.view_id())
+                        let is_ai_block_for_conversation = matches!(
+                            view.metadata(),
+                            Some(RichContentMetadata::AIBlock(metadata))
+                                if metadata.conversation_id == *conversation_id
+                        );
+                        is_ai_block_for_conversation.then_some(view.view_id())
                     })
                     .collect_vec();
                 for view_id_to_remove in view_ids_to_remove.into_iter() {
@@ -5854,6 +5850,10 @@ impl TerminalView {
                     self.rich_content_views
                         .retain(|view| view.view_id() != view_id_to_remove);
                 }
+                self.model
+                    .lock()
+                    .block_list_mut()
+                    .remove_command_blocks_for_conversation(*conversation_id);
             }
             BlocklistAIHistoryEvent::CreatedSubtask { .. }
             | BlocklistAIHistoryEvent::UpdatedAutoexecuteOverride { .. }
@@ -6065,7 +6065,11 @@ impl TerminalView {
 
             // Set input config to AI mode, preserving user's autodetect preference
             self.ai_input_model.update(ctx, |input_model, ctx| {
-                input_model.set_input_type(InputType::AI, ctx);
+                input_model.set_input_type(
+                    InputType::AI,
+                    Some(InputTypeAutoDetectionSource::ContinueConversation),
+                    ctx,
+                );
             });
         }
 
@@ -6391,7 +6395,11 @@ impl TerminalView {
         self.input.update(ctx, |input, ctx| {
             // Remove the @-trigger text (e.g. "@uncom") that was used to open the context menu.
             input.replace_at_symbol_with_text(&attachment_reference, ctx);
-            input.ensure_agent_mode_for_ai_features(true, ctx);
+            input.ensure_agent_mode_for_ai_features(
+                true,
+                Some(InputTypeAutoDetectionSource::AttachmentForcedAi),
+                ctx,
+            );
         });
 
         // Load the diff data asynchronously and complete the attachment when done
@@ -11918,6 +11926,7 @@ impl TerminalView {
                     self.refresh_warp_prompt(ctx);
                 }
             }
+
             ModelEvent::TerminalModeSwapped(mode) => {
                 #[cfg(feature = "local_tty")]
                 {
@@ -14298,7 +14307,11 @@ impl TerminalView {
                 OnboardingQuery::AgentPrompt(text) => {
                     input.replace_buffer_content(text, ctx);
                     // Force agent mode, overriding any shell lock
-                    input.ensure_agent_mode_for_ai_features(true, ctx);
+                    input.ensure_agent_mode_for_ai_features(
+                        true,
+                        Some(InputTypeAutoDetectionSource::OnboardingAgentPrompt),
+                        ctx,
+                    );
                 }
                 _ => {}
             }
@@ -18750,6 +18763,7 @@ impl TerminalView {
                     is_locked: true,
                 },
                 query.is_none(),
+                Some(InputTypeAutoDetectionSource::AskAi),
                 ctx,
             );
         });
@@ -18806,7 +18820,11 @@ impl TerminalView {
         }
 
         self.ai_input_model.update(ctx, |ai_input, ctx| {
-            ai_input.set_input_type(InputType::AI, ctx);
+            ai_input.set_input_type(
+                InputType::AI,
+                Some(InputTypeAutoDetectionSource::AskAi),
+                ctx,
+            );
         });
 
         if !context_block_indices.is_empty() {
@@ -21954,6 +21972,7 @@ impl TerminalView {
                         .with_input_type(InputType::AI)
                         .unlocked_if_autodetection_enabled(false, ctx),
                     true,
+                    Some(InputTypeAutoDetectionSource::InlineCodeReviewSend),
                     ctx,
                 );
             });
@@ -25377,6 +25396,7 @@ impl TypedActionView for TerminalView {
             | GenerateCodebaseIndex
             | LoadAgentModeConversation
             | DeleteAttachment { .. }
+            | OpenAttachmentLightbox { .. }
             | WriteCodebaseIndex
             | ToggleAutoexecuteMode
             | ToggleQueueNextPrompt
@@ -26072,6 +26092,63 @@ impl TypedActionView for TerminalView {
             DeleteAttachment { index } => {
                 self.ai_context_model.update(ctx, |context_model, ctx| {
                     context_model.remove_pending_attachment(*index, ctx);
+                });
+            }
+            OpenAttachmentLightbox { index } => {
+                let pending_images = self
+                    .ai_context_model
+                    .as_ref(ctx)
+                    .pending_attachments()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(attachment_index, attachment)| match attachment {
+                        PendingAttachment::Image(image) => Some((attachment_index, image.clone())),
+                        PendingAttachment::File(_) => None,
+                    })
+                    .collect::<Vec<_>>();
+                let mut images = Vec::new();
+                let mut initial_index = None;
+                for (attachment_index, image) in pending_images {
+                    let image_bytes =
+                        match base64::engine::general_purpose::STANDARD.decode(&image.data) {
+                            Ok(image_bytes) => image_bytes,
+                            Err(error) => {
+                                log::warn!(
+                                "Failed to decode pending image attachment for lightbox: {error}"
+                            );
+                                continue;
+                            }
+                        };
+
+                    let asset_id = format!("pending-attachment-lightbox-{attachment_index}");
+                    AssetCache::handle(ctx).update(ctx, |asset_cache, ctx| {
+                        asset_cache.insert_raw_asset_bytes::<ImageType>(
+                            asset_id.clone(),
+                            &image_bytes,
+                            ctx,
+                        );
+                    });
+
+                    if attachment_index == *index {
+                        initial_index = Some(images.len());
+                    }
+                    images.push(ui_components::lightbox::LightboxImage {
+                        source: ui_components::lightbox::LightboxImageSource::Resolved {
+                            asset_source: warpui::assets::asset_cache::AssetSource::Raw {
+                                id: asset_id,
+                            },
+                        },
+                        description: Some(image.file_name.clone()),
+                    });
+                }
+
+                let Some(initial_index) = initial_index else {
+                    return;
+                };
+
+                ctx.dispatch_typed_action(&WorkspaceAction::OpenLightbox {
+                    images,
+                    initial_index,
                 });
             }
             WriteCodebaseIndex => {
