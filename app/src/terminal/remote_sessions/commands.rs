@@ -12,7 +12,9 @@ pub(super) fn list_sessions_cmd() -> String {
 pub(super) fn new_session_cmd(name: &str, command: Option<&str>) -> String {
     let name = shell_escape(name);
     match command {
-        Some(c) if !c.is_empty() => format!("new-session -d -s {name} {cmd}", cmd = shell_escape(c)),
+        Some(c) if !c.is_empty() => {
+            format!("new-session -d -s {name} {cmd}", cmd = shell_escape(c))
+        }
         _ => format!("new-session -d -s {name}"),
     }
 }

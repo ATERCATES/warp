@@ -3078,8 +3078,8 @@ impl Workspace {
         );
 
         #[cfg(feature = "remote_sessions")]
-        let remote_sessions_panel_view = ctx
-            .add_typed_action_view(remote_sessions_panel::RemoteSessionsPanelView::new);
+        let remote_sessions_panel_view =
+            ctx.add_typed_action_view(remote_sessions_panel::RemoteSessionsPanelView::new);
 
         let mut ws = Self {
             tabs: Vec::new(),

@@ -38,10 +38,7 @@ fn new_session_cmd_includes_quoted_command_when_provided() {
 
 #[test]
 fn new_session_cmd_skips_empty_command() {
-    assert_eq!(
-        new_session_cmd("work", Some("")),
-        "new-session -d -s work"
-    );
+    assert_eq!(new_session_cmd("work", Some("")), "new-session -d -s work");
 }
 
 #[test]

@@ -1821,9 +1821,7 @@ impl SettingsView {
         ctx: &mut ViewContext<Self>,
     ) {
         match event {
-            remote_hosts_page::RemoteHostsPageEvent::FocusModal => {
-                ctx.focus(&self.search_editor)
-            }
+            remote_hosts_page::RemoteHostsPageEvent::FocusModal => ctx.focus(&self.search_editor),
             remote_hosts_page::RemoteHostsPageEvent::ShowModal
             | remote_hosts_page::RemoteHostsPageEvent::HideModal => {
                 ctx.notify();

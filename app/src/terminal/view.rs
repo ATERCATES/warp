@@ -22354,10 +22354,7 @@ impl TerminalView {
                 return;
             };
             let Some(pwd) = self.pwd() else {
-                self.show_error_toast(
-                    "Cannot detect remote working directory.".to_owned(),
-                    ctx,
-                );
+                self.show_error_toast("Cannot detect remote working directory.".to_owned(), ctx);
                 return;
             };
             let args = editor.ssh_remote_args(&host, &pwd);
@@ -22393,17 +22390,13 @@ impl TerminalView {
             .find(|h| h.local_host_key == context.local_host_key)
             .cloned()
         else {
-            self.show_error_toast(
-                "This remote host is no longer configured.".to_owned(),
-                ctx,
-            );
+            self.show_error_toast("This remote host is no longer configured.".to_owned(), ctx);
             return;
         };
 
         let socket = socket_path_for(&context.local_host_key);
         let session_q = shell_words::quote(&context.session_name).into_owned();
-        let remote_cmd =
-            format!("tmux display-message -p -t {session_q} '#{{pane_current_path}}'");
+        let remote_cmd = format!("tmux display-message -p -t {session_q} '#{{pane_current_path}}'");
 
         let mut ssh_args = vec![
             "-o".into(),
@@ -22420,8 +22413,8 @@ impl TerminalView {
 
         let ide_ssh_target = format_ide_ssh_target(&host.host, host.port);
 
-        let host_has_warp_only_ssh_config = host.identity_file_arg().is_some()
-            || !host.ssh_options.is_empty();
+        let host_has_warp_only_ssh_config =
+            host.identity_file_arg().is_some() || !host.ssh_options.is_empty();
         if host_has_warp_only_ssh_config && warn_once_for_host(&host.local_host_key) {
             log::warn!(
                 "Open in IDE: host '{alias}' has Identity file or SSH options configured in Warp; \
@@ -22475,10 +22468,7 @@ impl TerminalView {
             }
             let pwd = String::from_utf8_lossy(&output.stdout).trim().to_owned();
             if pwd.is_empty() {
-                me.show_error_toast(
-                    "The remote working directory is empty.".to_owned(),
-                    ctx,
-                );
+                me.show_error_toast("The remote working directory is empty.".to_owned(), ctx);
                 return;
             }
             let bin = editor.command();

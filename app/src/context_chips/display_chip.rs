@@ -52,9 +52,9 @@ use crate::terminal::input::{MenuPositioning, MenuPositioningProvider};
 use crate::terminal::model::session::SessionType;
 use crate::terminal::model_events::ModelEventDispatcher;
 use crate::terminal::view::ambient_agent::AmbientAgentViewModel;
+use crate::terminal::view::TerminalAction;
 use crate::ui_components::blended_colors;
 use crate::ui_components::icons::Icon;
-use crate::terminal::view::TerminalAction;
 use crate::util::bindings::keybinding_name_to_display_string;
 use crate::util::file::external_editor::working_dir_editor::WorkingDirEditor;
 use crate::util::truncation::truncate_from_beginning;
@@ -766,7 +766,9 @@ impl DisplayChip {
             ContextChipKind::Subshell => DisplayChipKind::Subshell,
             ContextChipKind::VirtualEnvironment => DisplayChipKind::VirtualEnvironment,
             ContextChipKind::CondaEnvironment => DisplayChipKind::CondaEnvironment,
-            ContextChipKind::OpenInEditorButton(editor) => DisplayChipKind::OpenInEditorButton(editor),
+            ContextChipKind::OpenInEditorButton(editor) => {
+                DisplayChipKind::OpenInEditorButton(editor)
+            }
             ContextChipKind::NodeVersion => {
                 let current_version = chip_result.value.as_ref().map(|v| v.to_string());
                 let model_events = &config.model_events;
@@ -1202,8 +1204,9 @@ impl DisplayChip {
         let is_interactive = !self.is_shared_session_viewer;
 
         let hover = Hoverable::new(self.mouse_state.clone(), move |state| {
-            let mut config = UdiChipConfig::new_with_icon(editor.icon(), font_color, chip_text.clone())
-                .with_hovered(state.is_hovered() && is_interactive);
+            let mut config =
+                UdiChipConfig::new_with_icon(editor.icon(), font_color, chip_text.clone())
+                    .with_hovered(state.is_hovered() && is_interactive);
             if is_in_agent_view {
                 config = config.for_agent_view();
             }
@@ -1227,9 +1230,9 @@ impl DisplayChip {
 
         hover
             .on_click(move |ctx, _app, _position| {
-                ctx.dispatch_typed_action::<TerminalAction>(TerminalAction::OpenWorkingDirInEditor(
-                    editor,
-                ));
+                ctx.dispatch_typed_action::<TerminalAction>(
+                    TerminalAction::OpenWorkingDirInEditor(editor),
+                );
             })
             .with_cursor(Cursor::PointingHand)
             .finish()

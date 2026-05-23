@@ -38,7 +38,9 @@ pub(super) fn render_icon_action(
             .finish();
         let mut container = Container::new(glyph)
             .with_uniform_padding(pad)
-            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(ACTION_BUTTON_CORNER_RADIUS)));
+            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(
+                ACTION_BUTTON_CORNER_RADIUS,
+            )));
         if mouse_state.is_hovered() {
             container = container.with_background(internal_colors::fg_overlay_2(theme));
         }

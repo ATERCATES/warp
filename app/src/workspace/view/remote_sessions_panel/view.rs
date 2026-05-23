@@ -19,9 +19,7 @@ use crate::appearance::Appearance;
 use crate::settings::remote_hosts::{
     RemoteHost, RemoteSessionsSettings, RemoteSessionsSettingsChangedEvent,
 };
-use crate::terminal::remote_sessions::{
-    HostStatus, RemoteSessionsEvent, RemoteSessionsModel,
-};
+use crate::terminal::remote_sessions::{HostStatus, RemoteSessionsEvent, RemoteSessionsModel};
 
 use super::host_row::{render_host_row, HostRowProps};
 use super::session_row::{render_session_row, SessionRowProps};
@@ -53,8 +51,13 @@ pub enum RemoteSessionsPanelAction {
 #[derive(Clone, Debug)]
 enum ListItem {
     Host(String),
-    Session { host_key: String, session_index: usize },
-    NewSessionRow { host_key: String },
+    Session {
+        host_key: String,
+        session_index: usize,
+    },
+    NewSessionRow {
+        host_key: String,
+    },
 }
 
 #[derive(Default)]
@@ -123,11 +126,7 @@ impl RemoteSessionsPanelView {
         view
     }
 
-    fn handle_model_event(
-        &mut self,
-        _event: &RemoteSessionsEvent,
-        ctx: &mut ViewContext<Self>,
-    ) {
+    fn handle_model_event(&mut self, _event: &RemoteSessionsEvent, ctx: &mut ViewContext<Self>) {
         self.rebuild_list_items(ctx);
         ctx.notify();
     }
@@ -182,10 +181,7 @@ impl RemoteSessionsPanelView {
         let mut items = Vec::new();
         for host in &hosts {
             let key = host.local_host_key.clone();
-            self.state_handles
-                .host_rows
-                .entry(key.clone())
-                .or_default();
+            self.state_handles.host_rows.entry(key.clone()).or_default();
             self.state_handles
                 .connect_buttons
                 .entry(key.clone())
@@ -295,10 +291,12 @@ impl TypedActionView for RemoteSessionsPanelView {
                 ctx.notify();
             }
             RemoteSessionsPanelAction::AttachSession { key, name } => {
-                ctx.dispatch_typed_action(&crate::workspace::WorkspaceAction::OpenRemoteAttachTab {
-                    local_host_key: key.clone(),
-                    session_name: name.clone(),
-                });
+                ctx.dispatch_typed_action(
+                    &crate::workspace::WorkspaceAction::OpenRemoteAttachTab {
+                        local_host_key: key.clone(),
+                        session_name: name.clone(),
+                    },
+                );
             }
             RemoteSessionsPanelAction::KillSession { key, name } => {
                 let key = key.clone();
@@ -399,22 +397,16 @@ impl View for RemoteSessionsPanelView {
                                     let host = hosts_by_key.get(key)?;
                                     let state = model.host_state(key)?;
                                     let expanded = expanded_hosts.contains(key);
-                                    let mouse_state = host_states_clone
-                                        .get(key)
-                                        .cloned()
-                                        .unwrap_or_default();
-                                    let connect_state = connect_states_clone
-                                        .get(key)
-                                        .cloned()
-                                        .unwrap_or_default();
+                                    let mouse_state =
+                                        host_states_clone.get(key).cloned().unwrap_or_default();
+                                    let connect_state =
+                                        connect_states_clone.get(key).cloned().unwrap_or_default();
                                     let disconnect_state = disconnect_states_clone
                                         .get(key)
                                         .cloned()
                                         .unwrap_or_default();
-                                    let remove_state = remove_states_clone
-                                        .get(key)
-                                        .cloned()
-                                        .unwrap_or_default();
+                                    let remove_state =
+                                        remove_states_clone.get(key).cloned().unwrap_or_default();
                                     let is_pending_remove =
                                         pending_remove.as_deref() == Some(key.as_str());
                                     Some(render_host_row(
@@ -463,11 +455,7 @@ impl View for RemoteSessionsPanelView {
                                         .get(host_key)
                                         .cloned()
                                         .unwrap_or_default();
-                                    Some(render_new_session_button(
-                                        host_key,
-                                        mouse_state,
-                                        app,
-                                    ))
+                                    Some(render_new_session_button(host_key, mouse_state, app))
                                 }
                             }
                         })
@@ -520,10 +508,7 @@ fn next_default_session_name(existing: &[String]) -> String {
     "session-1".to_string()
 }
 
-fn render_header(
-    refresh_mouse_state: MouseStateHandle,
-    app: &AppContext,
-) -> Box<dyn Element> {
+fn render_header(refresh_mouse_state: MouseStateHandle, app: &AppContext) -> Box<dyn Element> {
     let appearance = Appearance::as_ref(app);
     let theme = appearance.theme();
 
@@ -567,10 +552,7 @@ fn render_header(
         .finish()
 }
 
-fn render_footer(
-    button_mouse_state: MouseStateHandle,
-    app: &AppContext,
-) -> Box<dyn Element> {
+fn render_footer(button_mouse_state: MouseStateHandle, app: &AppContext) -> Box<dyn Element> {
     let appearance = Appearance::as_ref(app);
     let theme = appearance.theme();
     let font_family = appearance.ui_font_family();
@@ -609,10 +591,7 @@ fn render_footer(
     .finish()
 }
 
-fn render_empty_state(
-    button_mouse_state: MouseStateHandle,
-    app: &AppContext,
-) -> Box<dyn Element> {
+fn render_empty_state(button_mouse_state: MouseStateHandle, app: &AppContext) -> Box<dyn Element> {
     let appearance = Appearance::as_ref(app);
     let theme = appearance.theme();
 
@@ -733,4 +712,3 @@ fn render_new_session_button(
     })
     .finish()
 }
-
