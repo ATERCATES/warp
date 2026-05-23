@@ -71,6 +71,13 @@ jobs:
         if: matrix.target_os == 'macos'
         run: rustup target add ${{ matrix.rust_target }}
 
+      - name: Install cargo-bundle (macOS)
+        # `script/install_cargo_release_deps` only installs cargo-about; the
+        # bundler comes from a separate script that the upstream release
+        # workflow calls explicitly.
+        if: matrix.target_os == 'macos'
+        run: ./script/install_cargo_bundle
+
       - name: Build OSS bundle
         env:
           # script/macos/bundle skips codesign when these are unset; we
