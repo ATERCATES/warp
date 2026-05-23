@@ -1,0 +1,197 @@
+name: Fork Release
+
+# Build per-platform `warp-oss` artifacts for the ATERCATES/warp fork and
+# attach them to a GitHub Release.
+#
+# Trigger via:
+#   - workflow_dispatch (manual)
+#   - push of a `fork-v*` tag (e.g. `fork-v0.1.0`)
+#
+# Outputs uploaded to the matching Release:
+#   - WarpOss-aarch64-apple-darwin.zip   (Apple Silicon Mac)
+#   - WarpOss-x86_64-apple-darwin.zip    (Intel Mac)
+#   - WarpOss-x86_64-linux.AppImage      (Linux x86_64)
+#
+# No Apple signing, no notarization, no GCS upload, no Sentry. Everything runs
+# with the default `secrets.GITHUB_TOKEN`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create (e.g. fork-v0.1.0). Required for manual runs.
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub Release as prerelease.
+        required: false
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'fork-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS arm64
+            os: macos-14
+            target_os: macos
+            arch: aarch64
+            rust_target: aarch64-apple-darwin
+            artifact: WarpOss-aarch64-apple-darwin.zip
+          - label: macOS x86_64
+            os: macos-13
+            target_os: macos
+            arch: x86_64
+            rust_target: x86_64-apple-darwin
+            artifact: WarpOss-x86_64-apple-darwin.zip
+          - label: Linux x86_64
+            os: ubuntu-22.04
+            target_os: linux
+            arch: x86_64
+            rust_target: x86_64-unknown-linux-gnu
+            artifact: WarpOss-x86_64-linux.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Prepare environment
+        uses: ./.github/actions/prepare_environment
+        with:
+          target_os: ${{ matrix.target_os }}
+          is_self_hosted: 'false'
+          install_release_deps: 'true'
+
+      - name: Add Rust target (macOS)
+        if: matrix.target_os == 'macos'
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Build OSS bundle
+        env:
+          # script/macos/bundle skips codesign when these are unset; we
+          # ship unsigned .app archives and document the Gatekeeper bypass
+          # in scripts/install.sh.
+          DISABLE_CODESIGN: '1'
+        run: |
+          if [[ "${{ matrix.target_os }}" == "macos" ]]; then
+            ./script/bundle --channel oss --arch ${{ matrix.arch }}
+          else
+            BUILD_ARCH=${{ matrix.arch }} ./script/bundle --channel oss --packages appimage
+          fi
+
+      - name: Package macOS .app as zip
+        if: matrix.target_os == 'macos'
+        run: |
+          case "${{ matrix.rust_target }}" in
+            aarch64-apple-darwin) BUNDLE_DIR=target/aarch64-apple-darwin/release-lto/bundle/osx ;;
+            x86_64-apple-darwin)  BUNDLE_DIR=target/x86_64-apple-darwin/release-lto/bundle/osx ;;
+          esac
+          if [[ ! -d "$BUNDLE_DIR/WarpOss.app" ]]; then
+            echo "Expected $BUNDLE_DIR/WarpOss.app to exist; found:" >&2
+            ls -la "$BUNDLE_DIR" >&2
+            exit 1
+          fi
+          ditto -c -k --keepParent "$BUNDLE_DIR/WarpOss.app" "${{ matrix.artifact }}"
+
+      - name: Locate Linux AppImage
+        if: matrix.target_os == 'linux'
+        run: |
+          APPIMAGE=$(ls target/release-lto/bundle/linux/WarpOss-*.AppImage | head -1)
+          if [[ -z "$APPIMAGE" ]]; then
+            echo "No AppImage found under target/release-lto/bundle/linux/" >&2
+            ls -la target/release-lto/bundle/linux/ >&2 || true
+            exit 1
+          fi
+          cp "$APPIMAGE" "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}"
+
+      - name: Compute artifact checksum
+        run: |
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+          fi
+          cat "${{ matrix.artifact }}.sha256"
+
+      - name: Upload artifact (for cross-job collection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact layout
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name '*.zip' -o -name '*.AppImage' -o -name '*.sha256' \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            dist/*
+          body: |
+            Fork build of `warp-oss` from ATERCATES/warp.
+
+            ## Install
+
+            ```sh
+            curl -sSf https://raw.githubusercontent.com/ATERCATES/warp/master/scripts/install.sh | bash
+            ```
+
+            The installer detects your OS / arch, downloads the matching artifact from this release, and installs it.
+
+            ## Manual install
+
+            - **macOS**: download the `.zip` matching your Mac, unzip into `~/Applications`, then first-launch bypass:
+              ```sh
+              xattr -dr com.apple.quarantine ~/Applications/WarpOss.app
+              ```
+            - **Linux x86_64**: download `WarpOss-x86_64-linux.AppImage`, `chmod +x`, run.
+
+            ## Notes
+
+            - Unsigned macOS build. Gatekeeper requires the `xattr` bypass above on first launch.
+            - No auto-update. Re-run the installer or download a newer release to upgrade.
+            - Shares config with the official Warp at `~/.warp/`. Use `WARP_CONFIG_DIR=~/.warp-fork warp-oss` to isolate.
