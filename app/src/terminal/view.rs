@@ -22328,6 +22328,20 @@ impl TerminalView {
         self.remote_session_context = Some(context);
     }
 
+    fn login_shell_path_env(&self, ctx: &mut ViewContext<Self>) -> Option<String> {
+        #[cfg(all(not(target_family = "wasm"), feature = "local_tty"))]
+        {
+            crate::terminal::local_shell::LocalShellState::as_ref(ctx)
+                .local_shell_info()
+                .and_then(|shell| shell.get_path_env_var().clone())
+        }
+        #[cfg(not(all(not(target_family = "wasm"), feature = "local_tty")))]
+        {
+            let _ = ctx;
+            None
+        }
+    }
+
     fn open_working_dir_in_editor(
         &mut self,
         editor: WorkingDirEditor,
@@ -22339,12 +22353,13 @@ impl TerminalView {
             return;
         }
 
-        let bin = editor.command();
+        let shell_path = self.login_shell_path_env(ctx);
+        let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
         let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
-            command::blocking::Command::new(bin)
+            command::blocking::Command::new(&program)
                 .arg(&pwd)
                 .spawn()
-                .map_err(|err| (err, format!("{bin} {pwd}")))
+                .map_err(|err| (err, format!("{} {pwd}", program.display())))
         } else {
             let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
                 self.show_error_toast(
@@ -22358,10 +22373,10 @@ impl TerminalView {
                 return;
             };
             let args = editor.ssh_remote_args(&host, &pwd);
-            command::blocking::Command::new(bin)
+            command::blocking::Command::new(&program)
                 .args(&args)
                 .spawn()
-                .map_err(|err| (err, format!("{bin} {args:?}")))
+                .map_err(|err| (err, format!("{} {args:?}", program.display())))
         };
         if let Err((err, cmd)) = spawn_result {
             log::warn!("Failed to launch `{cmd}`: {err}");
@@ -22471,10 +22486,14 @@ impl TerminalView {
                 me.show_error_toast("The remote working directory is empty.".to_owned(), ctx);
                 return;
             }
-            let bin = editor.command();
+            let shell_path = me.login_shell_path_env(ctx);
+            let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
             let args = editor.ssh_remote_args(&ide_ssh_target, &pwd);
-            if let Err(err) = command::blocking::Command::new(bin).args(&args).spawn() {
-                log::warn!("Failed to launch `{bin} {args:?}`: {err}");
+            if let Err(err) = command::blocking::Command::new(&program)
+                .args(&args)
+                .spawn()
+            {
+                log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
                 me.show_error_toast(
                     format!("Could not launch {editor_display_name}: {err}"),
                     ctx,

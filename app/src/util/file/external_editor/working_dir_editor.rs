@@ -1,3 +1,6 @@
+use std::ffi::OsStr;
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use warp_core::ui::icons::Icon;
 
@@ -82,6 +85,23 @@ impl WorkingDirEditor {
 
     pub fn command(self) -> &'static str {
         self.meta().command
+    }
+
+    #[cfg_attr(target_family = "wasm", allow(unused_variables))]
+    pub fn resolve_program(self, shell_path: Option<&OsStr>) -> PathBuf {
+        let bin = self.command();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            use crate::util::path::{resolve_executable, resolve_executable_in_path};
+            if let Some(resolved) = shell_path
+                .and_then(|path| resolve_executable_in_path(bin, path))
+                .or_else(|| resolve_executable(bin))
+                .map(|p| p.into_owned())
+            {
+                return resolved;
+            }
+        }
+        PathBuf::from(bin)
     }
 
     pub fn icon(self) -> Icon {
