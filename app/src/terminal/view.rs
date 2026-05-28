@@ -22328,6 +22328,22 @@ impl TerminalView {
         self.remote_session_context = Some(context);
     }
 
+    fn login_shell_path_env(
+        ctx: &mut ViewContext<Self>,
+    ) -> futures::future::BoxFuture<'static, Option<String>> {
+        #[cfg(all(not(target_family = "wasm"), feature = "local_tty"))]
+        {
+            crate::terminal::local_shell::LocalShellState::handle(ctx)
+                .update(ctx, |state, ctx| state.get_interactive_path_env_var(ctx))
+        }
+        #[cfg(not(all(not(target_family = "wasm"), feature = "local_tty")))]
+        {
+            use futures::future::FutureExt as _;
+            let _ = ctx;
+            futures::future::ready(None).boxed()
+        }
+    }
+
     fn open_working_dir_in_editor(
         &mut self,
         editor: WorkingDirEditor,
@@ -22339,12 +22355,8 @@ impl TerminalView {
             return;
         }
 
-        let bin = editor.command();
-        let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
-            command::blocking::Command::new(bin)
-                .arg(&pwd)
-                .spawn()
-                .map_err(|err| (err, format!("{bin} {pwd}")))
+        let args: Vec<String> = if let Some(pwd) = self.pwd_if_local(ctx) {
+            vec![pwd]
         } else {
             let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
                 self.show_error_toast(
@@ -22357,19 +22369,23 @@ impl TerminalView {
                 self.show_error_toast("Cannot detect remote working directory.".to_owned(), ctx);
                 return;
             };
-            let args = editor.ssh_remote_args(&host, &pwd);
-            command::blocking::Command::new(bin)
+            editor.ssh_remote_args(&host, &pwd)
+        };
+
+        let path_future = Self::login_shell_path_env(ctx);
+        ctx.spawn(path_future, move |me, shell_path: Option<String>, ctx| {
+            let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
+            if let Err(err) = command::blocking::Command::new(&program)
                 .args(&args)
                 .spawn()
-                .map_err(|err| (err, format!("{bin} {args:?}")))
-        };
-        if let Err((err, cmd)) = spawn_result {
-            log::warn!("Failed to launch `{cmd}`: {err}");
-            self.show_error_toast(
-                format!("Could not launch {}: {err}", editor.display_name()),
-                ctx,
-            );
-        }
+            {
+                log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
+                me.show_error_toast(
+                    format!("Could not launch {}: {err}", editor.display_name()),
+                    ctx,
+                );
+            }
+        });
     }
 
     #[cfg(feature = "remote_sessions")]
@@ -22471,15 +22487,22 @@ impl TerminalView {
                 me.show_error_toast("The remote working directory is empty.".to_owned(), ctx);
                 return;
             }
-            let bin = editor.command();
             let args = editor.ssh_remote_args(&ide_ssh_target, &pwd);
-            if let Err(err) = command::blocking::Command::new(bin).args(&args).spawn() {
-                log::warn!("Failed to launch `{bin} {args:?}`: {err}");
-                me.show_error_toast(
-                    format!("Could not launch {editor_display_name}: {err}"),
-                    ctx,
-                );
-            }
+            let path_future = Self::login_shell_path_env(ctx);
+            ctx.spawn(path_future, move |me, shell_path: Option<String>, ctx| {
+                let program =
+                    editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
+                if let Err(err) = command::blocking::Command::new(&program)
+                    .args(&args)
+                    .spawn()
+                {
+                    log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
+                    me.show_error_toast(
+                        format!("Could not launch {editor_display_name}: {err}"),
+                        ctx,
+                    );
+                }
+            });
         });
     }
 
