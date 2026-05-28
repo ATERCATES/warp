@@ -22328,17 +22328,19 @@ impl TerminalView {
         self.remote_session_context = Some(context);
     }
 
-    fn login_shell_path_env(&self, ctx: &mut ViewContext<Self>) -> Option<String> {
+    fn login_shell_path_env(
+        ctx: &mut ViewContext<Self>,
+    ) -> futures::future::BoxFuture<'static, Option<String>> {
         #[cfg(all(not(target_family = "wasm"), feature = "local_tty"))]
         {
-            crate::terminal::local_shell::LocalShellState::as_ref(ctx)
-                .local_shell_info()
-                .and_then(|shell| shell.get_path_env_var().clone())
+            crate::terminal::local_shell::LocalShellState::handle(ctx)
+                .update(ctx, |state, ctx| state.get_interactive_path_env_var(ctx))
         }
         #[cfg(not(all(not(target_family = "wasm"), feature = "local_tty")))]
         {
+            use futures::future::FutureExt as _;
             let _ = ctx;
-            None
+            futures::future::ready(None).boxed()
         }
     }
 
@@ -22353,13 +22355,8 @@ impl TerminalView {
             return;
         }
 
-        let shell_path = self.login_shell_path_env(ctx);
-        let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
-        let spawn_result = if let Some(pwd) = self.pwd_if_local(ctx) {
-            command::blocking::Command::new(&program)
-                .arg(&pwd)
-                .spawn()
-                .map_err(|err| (err, format!("{} {pwd}", program.display())))
+        let args: Vec<String> = if let Some(pwd) = self.pwd_if_local(ctx) {
+            vec![pwd]
         } else {
             let Some(host) = self.active_ssh_host(ctx).map(str::to_owned) else {
                 self.show_error_toast(
@@ -22372,19 +22369,23 @@ impl TerminalView {
                 self.show_error_toast("Cannot detect remote working directory.".to_owned(), ctx);
                 return;
             };
-            let args = editor.ssh_remote_args(&host, &pwd);
-            command::blocking::Command::new(&program)
+            editor.ssh_remote_args(&host, &pwd)
+        };
+
+        let path_future = Self::login_shell_path_env(ctx);
+        ctx.spawn(path_future, move |me, shell_path: Option<String>, ctx| {
+            let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
+            if let Err(err) = command::blocking::Command::new(&program)
                 .args(&args)
                 .spawn()
-                .map_err(|err| (err, format!("{} {args:?}", program.display())))
-        };
-        if let Err((err, cmd)) = spawn_result {
-            log::warn!("Failed to launch `{cmd}`: {err}");
-            self.show_error_toast(
-                format!("Could not launch {}: {err}", editor.display_name()),
-                ctx,
-            );
-        }
+            {
+                log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
+                me.show_error_toast(
+                    format!("Could not launch {}: {err}", editor.display_name()),
+                    ctx,
+                );
+            }
+        });
     }
 
     #[cfg(feature = "remote_sessions")]
@@ -22486,19 +22487,22 @@ impl TerminalView {
                 me.show_error_toast("The remote working directory is empty.".to_owned(), ctx);
                 return;
             }
-            let shell_path = me.login_shell_path_env(ctx);
-            let program = editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
             let args = editor.ssh_remote_args(&ide_ssh_target, &pwd);
-            if let Err(err) = command::blocking::Command::new(&program)
-                .args(&args)
-                .spawn()
-            {
-                log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
-                me.show_error_toast(
-                    format!("Could not launch {editor_display_name}: {err}"),
-                    ctx,
-                );
-            }
+            let path_future = Self::login_shell_path_env(ctx);
+            ctx.spawn(path_future, move |me, shell_path: Option<String>, ctx| {
+                let program =
+                    editor.resolve_program(shell_path.as_deref().map(std::ffi::OsStr::new));
+                if let Err(err) = command::blocking::Command::new(&program)
+                    .args(&args)
+                    .spawn()
+                {
+                    log::warn!("Failed to launch `{} {args:?}`: {err}", program.display());
+                    me.show_error_toast(
+                        format!("Could not launch {editor_display_name}: {err}"),
+                        ctx,
+                    );
+                }
+            });
         });
     }
 
