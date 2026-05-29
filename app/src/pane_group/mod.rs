@@ -891,6 +891,8 @@ pub struct PaneGroup {
 
     /// Pane with an open environment setup mode selector modal (rendered at tab level).
     pane_with_open_environment_setup_mode_selector: Option<PaneId>,
+    /// Pane with an open auth-secret delete confirmation dialog (rendered at tab level).
+    pane_with_open_auth_secret_delete_confirmation_dialog: Option<PaneId>,
     /// Pane with an open agent-assisted environment modal (rendered at tab level).
     pane_with_open_agent_assisted_environment_modal: Option<PaneId>,
 
@@ -3094,6 +3096,7 @@ impl PaneGroup {
             active_file_model,
             terminal_with_open_summarization_dialog: None,
             pane_with_open_environment_setup_mode_selector: None,
+            pane_with_open_auth_secret_delete_confirmation_dialog: None,
             pane_with_open_agent_assisted_environment_modal: None,
             right_panel_open: false,
             left_panel_open: false,
@@ -3574,7 +3577,6 @@ impl PaneGroup {
 
         self.child_agent_panes
             .insert(child_conversation_id, new_pane_id.into());
-
         // If the discarded fallback was occupying a tree slot via temporary
         // replacement, re-swap so the user lands on the new pane.
         if let Some(anchor) = fallback_was_swapped_anchor {
@@ -5153,7 +5155,6 @@ impl PaneGroup {
         let Some(child_pane_id) = owner_child_pane else {
             return false;
         };
-
         if self
             .child_agent_origin
             .as_ref()
@@ -5292,6 +5293,9 @@ impl PaneGroup {
 
             if self.pane_with_open_environment_setup_mode_selector == Some(pane_id) {
                 self.pane_with_open_environment_setup_mode_selector = None;
+            }
+            if self.pane_with_open_auth_secret_delete_confirmation_dialog == Some(pane_id) {
+                self.pane_with_open_auth_secret_delete_confirmation_dialog = None;
             }
             if self.pane_with_open_agent_assisted_environment_modal == Some(pane_id) {
                 self.pane_with_open_agent_assisted_environment_modal = None;
@@ -7422,7 +7426,6 @@ impl PaneGroup {
             .map(PaneId::from);
         let from_owner_lookup = self.pane_id_for_conversation_owner(conversation_id, ctx);
         let target_pane_id = from_child_panes.or(from_visible_pane).or(from_owner_lookup);
-
         let Some(target_pane_id) = target_pane_id else {
             // No owning pane in this group (e.g. the conversation lives
             // in another tab). Fall back to workspace-level navigation.
@@ -7450,7 +7453,7 @@ impl PaneGroup {
         if let Some(replacement_id) = self.panes.replacement_pane_for_original(target_pane_id) {
             self.revert_swap_clearing_split_off(replacement_id, ctx);
             self.handle_pane_count_change(ctx);
-            self.focus_pane(target_pane_id, true, ctx);
+            self.focus_pane_preserving_maximized_state(target_pane_id, true, ctx);
             for pane_id in [replacement_id, target_pane_id] {
                 if let Some(terminal_view) = self.terminal_view_from_pane_id(pane_id, ctx) {
                     terminal_view.update(ctx, |view, ctx| {
@@ -7476,7 +7479,7 @@ impl PaneGroup {
         // If revert landed us on the target, just focus and return.
         if anchor == target_pane_id {
             self.handle_pane_count_change(ctx);
-            self.focus_pane(anchor, true, ctx);
+            self.focus_pane_preserving_maximized_state(anchor, true, ctx);
             if let Some(terminal_view) = self.terminal_view_from_pane_id(anchor, ctx) {
                 terminal_view.update(ctx, |view, ctx| {
                     view.update_agent_view_back_button_state(ctx);
@@ -7491,7 +7494,7 @@ impl PaneGroup {
         if self.panes.is_pane_in_tree(target_pane_id) && !self.panes.is_pane_hidden(&target_pane_id)
         {
             self.handle_pane_count_change(ctx);
-            self.focus_pane(target_pane_id, true, ctx);
+            self.focus_pane_preserving_maximized_state(target_pane_id, true, ctx);
             if let Some(terminal_view) = self.terminal_view_from_pane_id(target_pane_id, ctx) {
                 terminal_view.update(ctx, |view, ctx| {
                     view.update_agent_view_back_button_state(ctx);
@@ -7511,10 +7514,8 @@ impl PaneGroup {
             );
             return;
         }
-
         self.handle_pane_count_change(ctx);
-        self.focus_pane(target_pane_id, true, ctx);
-
+        self.focus_pane_preserving_maximized_state(target_pane_id, true, ctx);
         // Refresh the back-button label on both swapped panes; otherwise
         // a stale label would persist until the next agent-view entry.
         for pane_id in [anchor, target_pane_id] {
@@ -7906,6 +7907,21 @@ impl PaneGroup {
         true
     }
 
+    fn focus_pane_preserving_maximized_state(
+        &mut self,
+        id: PaneId,
+        focus_pane_contents: bool,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let was_maximized = self.is_focused_pane_maximized(ctx);
+        let focused = self.focus_pane(id, focus_pane_contents, ctx);
+        if focused && was_maximized {
+            self.focus_state.update(ctx, |focus_state, ctx| {
+                focus_state.set_focused_pane_maximized(true, ctx);
+            });
+        }
+        focused
+    }
     fn focus_pane_and_record_in_history(
         &mut self,
         id: PaneId,
@@ -8504,6 +8520,18 @@ impl View for PaneGroup {
             }
         }
 
+        // Render auth-secret delete confirmation at tab level when open.
+        if let Some(pane_id) = self.pane_with_open_auth_secret_delete_confirmation_dialog {
+            if let Some(dialog) = self
+                .terminal_view_from_pane_id(pane_id, app)
+                .and_then(|tv| {
+                    tv.as_ref(app)
+                        .auth_secret_delete_confirmation_dialog_element(app)
+                })
+            {
+                stack.add_child(dialog);
+            }
+        }
         // Render agent-assisted environment modal at tab level when open.
         if let Some(pane_id) = self.pane_with_open_agent_assisted_environment_modal {
             if let Some(handle) = self

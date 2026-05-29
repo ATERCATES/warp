@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use warp_core::SessionId;
 use warp_util::remote_path::RemotePath;
 use warp_util::standardized_path::StandardizedPath;
 use warpui::{AppContext, ModelContext, ModelHandle};
@@ -355,16 +354,15 @@ impl DiffStateModel {
         Self::Local(local)
     }
 
-    /// Creates a new remote-backed `DiffStateModel`. Requires a connected
-    /// `session_id` to anchor the initial `GetDiffState` subscription.
-    pub fn new_remote(
-        remote_path: RemotePath,
-        session_id: SessionId,
-        ctx: &mut ModelContext<Self>,
-    ) -> Self {
-        let remote = ctx.add_model(|ctx| {
-            RemoteDiffStateModel::new(remote_path, DiffMode::default(), session_id, ctx)
-        });
+    /// Creates a new remote-backed `DiffStateModel`. The model is
+    /// session-agnostic and is keyed by `(host_id, repo, mode)`; the
+    /// `RemoteServerManager` resolves a connected session for the host at
+    /// every outbound RPC, so the wrapper does not need to thread a
+    /// `SessionId` through. Callers must ensure a session for the host is
+    /// connected before constructing.
+    pub fn new_remote(remote_path: RemotePath, ctx: &mut ModelContext<Self>) -> Self {
+        let remote =
+            ctx.add_model(|ctx| RemoteDiffStateModel::new(remote_path, DiffMode::default(), ctx));
         ctx.subscribe_to_model(&remote, Self::forward_event);
         Self::Remote(remote)
     }
@@ -465,20 +463,6 @@ impl DiffStateModel {
         match self {
             Self::Local(m) => m.as_ref(ctx).upstream_differs_from_main(),
             Self::Remote(m) => m.as_ref(ctx).upstream_differs_from_main(),
-        }
-    }
-
-    pub(crate) fn pr_info<'a>(&self, ctx: &'a AppContext) -> Option<&'a PrInfo> {
-        match self {
-            Self::Local(m) => m.as_ref(ctx).pr_info(),
-            Self::Remote(m) => m.as_ref(ctx).pr_info(),
-        }
-    }
-
-    pub(crate) fn is_pr_info_refreshing(&self, ctx: &AppContext) -> bool {
-        match self {
-            Self::Local(m) => m.as_ref(ctx).is_pr_info_refreshing(),
-            Self::Remote(m) => m.as_ref(ctx).is_pr_info_refreshing(),
         }
     }
 
@@ -588,11 +572,11 @@ impl DiffStateModel {
         }
     }
 
-    pub(crate) fn refresh_metadata_and_pr_info(&self, ctx: &mut ModelContext<Self>) {
+    pub(crate) fn refresh_metadata_after_git_operation(&self, ctx: &mut ModelContext<Self>) {
         match self {
             Self::Local(local) => {
                 local.update(ctx, |local, ctx| {
-                    local.refresh_metadata_and_pr_info(ctx);
+                    local.refresh_metadata_after_git_operation(ctx);
                 });
             }
             Self::Remote(_) => {}

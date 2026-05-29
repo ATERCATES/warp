@@ -36,6 +36,9 @@ asset_macro = { path = "crates/asset_macro" }
 channel_versions = { path = "crates/channel_versions", default-features = false }
 command = { path = "crates/command" }
 command-signatures-v2 = { path = "crates/command-signatures-v2" }
+cloud_objects = { path = "crates/cloud_objects" }
+cloud_object_client = { path = "crates/cloud_object_client" }
+cloud_object_models = { path = "crates/cloud_object_models" }
 computer_use = { path = "crates/computer_use" }
 field_mask = { path = "crates/field_mask" }
 firebase = { path = "crates/firebase" }
@@ -84,6 +87,7 @@ warp_js = { path = "crates/warp_js" }
 warp_logging = { path = "crates/warp_logging" }
 warp_managed_secrets = { path = "crates/managed_secrets" }
 warp_ripgrep = { path = "crates/warp_ripgrep" }
+warp_search_core = { path = "crates/warp_search_core" }
 warp_server_client = { path = "crates/warp_server_client" }
 warp_terminal = { path = "crates/warp_terminal" }
 warp_util = { path = "crates/warp_util" }
@@ -169,6 +173,7 @@ image = { version = "0.25.9", default-features = false, features = [
   "webp",
 ] }
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
+iso8601-duration = { version = "0.2.0", features = ["chrono", "serde"] }
 itertools = "0.14.0"
 jaq-json = { version = "2.0", features = ["serde"] }
 # Disabling the default `formats` feature is intended to avoid pulling in
@@ -194,6 +199,7 @@ openh264 = "0.8"
 static_assertions = "1.1.0"
 url = "2.5.4"
 urlocator = "0.1.4"
+mockall = "0.13.1"
 objc = "0.2"
 objc2 = "0.6.3"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSScreen", "objc2-core-foundation"] }
@@ -306,7 +312,7 @@ version-compare = "0.1"
 vte = { git = "https://github.com/warpdotdev/vte.git", rev = "4b399c87b63ba88f45709edaa6383fc519f6c900", default-features = false }
 walkdir = "2"
 warp-workflows = { git = "https://github.com/warpdotdev/workflows", rev = "793a98ddda6ef19682aed66364faebd2829f0e01" }
-warp_multi_agent_api = { git = "https://github.com/warpdotdev/warp-proto-apis.git", rev = "9a2d2425c5d1eb40fb547956e659511906e03f9e" }
+warp_multi_agent_api = { git = "https://github.com/warpdotdev/warp-proto-apis.git", rev = "c67de64fc4949f693a679552dc88cebc9f7d0180" }
 wasm-bindgen = "0.2.89"
 wasm-bindgen-futures = "0.4.42"
 web-sys = { version = "0.3.69", features = [
@@ -350,7 +356,7 @@ dirs = "6.0.0"
 rayon = "1.10.0"
 sha2 = "0.10"
 shellexpand = "3.1.1"
-warp-command-signatures = { git = "https://github.com/warpdotdev/command-signatures.git", rev = "00a032b8ea0ee5711e2077e39a92dc9ca2051cd3", default-features = false }
+warp-command-signatures = { git = "https://github.com/warpdotdev/command-signatures.git", rev = "b3061096d193bf4915eabb0d03b4e6b403c6ea45", default-features = false }
 winit = { git = "https://github.com/warpdotdev/winit.git", rev = "a4e0ecb5f9626ccac9445a73dc28354b52423abc" }
 x11rb = "0.13.0"
 mockito = "1.7.0"

@@ -278,6 +278,7 @@ fn register_tests() -> HashMap<&'static str, BoxedBuilderFn> {
     register_test!(test_copy_prompt_from_block_honor_ps1_disabled);
     register_test!(test_copy_prompt_from_block_honor_ps1_enabled);
     register_test!(test_copy_prompt_from_input_honor_ps1_disabled);
+    register_test!(test_warp_prompt_unsets_zsh_rprompt);
     register_test!(test_copy_prompt_from_input_honor_ps1_enabled);
     register_test!(test_copy_rprompt_from_input_honor_ps1_enabled);
     register_test!(test_rprompt_doesnt_show_when_not_enough_space);
@@ -448,6 +449,8 @@ fn register_tests() -> HashMap<&'static str, BoxedBuilderFn> {
     register_test!(test_goto_line_jumps_to_line);
     register_test!(test_goto_line_with_column);
     register_test!(test_goto_line_clamps_out_of_range);
+    register_test!(test_code_editor_line_numbers_default_to_absolute);
+    register_test!(test_code_editor_relative_line_numbers_follow_cursor);
 
     // Keyboard protocol tests
     register_test!(test_keyboard_protocol_disabled_shift_enter);

@@ -581,12 +581,20 @@ impl BlocklistAIController {
         }
         if FeatureFlag::OrchestrationV2.is_enabled() {
             let streamer = OrchestrationEventStreamer::handle(ctx);
-            ctx.subscribe_to_model(&streamer, move |me, event, ctx| {
-                let OrchestrationEventStreamerEvent::DormantClaudeWakeReady {
+            ctx.subscribe_to_model(&streamer, move |me, event, ctx| match event {
+                OrchestrationEventStreamerEvent::DormantClaudeWakeReady {
                     conversation_id,
                     wake_message,
-                } = event;
-                me.handle_dormant_claude_wake_ready(*conversation_id, wake_message.clone(), ctx);
+                } => {
+                    me.handle_dormant_claude_wake_ready(
+                        *conversation_id,
+                        wake_message.clone(),
+                        ctx,
+                    );
+                }
+                // Viewer-mode events are handled by `OrchestrationViewerModel`.
+                OrchestrationEventStreamerEvent::ChildSpawned { .. }
+                | OrchestrationEventStreamerEvent::ChildStatusChanged { .. } => {}
             });
         }
         Self {
@@ -1449,7 +1457,7 @@ impl BlocklistAIController {
         }
 
         BlocklistAIHistoryModel::handle(ctx).update(ctx, |history, ctx| {
-            history.set_active_conversation_id(conversation_id, self.terminal_view_id, ctx);
+            history.mark_active_conversation_id(conversation_id, self.terminal_view_id, ctx);
         });
 
         if !FeatureFlag::AgentView.is_enabled() && trigger == FollowUpTrigger::Auto {
@@ -2402,7 +2410,7 @@ impl BlocklistAIController {
         });
         if !is_passive_request {
             history_model.update(ctx, |history_model, ctx| {
-                history_model.set_active_conversation_id(
+                history_model.mark_active_conversation_id(
                     conversation_data.id,
                     self.terminal_view_id,
                     ctx,
