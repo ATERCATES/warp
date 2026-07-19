@@ -1,8 +1,124 @@
 use super::*;
 
-// Pre-order traversal correctness for the descendant walker is exercised in
+// Traversal and canonical pill-order correctness are exercised in
 // `app/src/ai/blocklist/orchestration_topology_tests.rs`. These tests stay
 // focused on the pill bar's own dispatch behavior.
+
+#[test]
+fn pill_bar_scrollable_finite_under_capped_drag_preview() {
+    use pathfinder_geometry::vector::vec2f;
+    use warpui::elements::new_scrollable::{NewScrollable, SingleAxisConfig};
+    use warpui::elements::{
+        ClippedScrollStateHandle, ConstrainedBox, Container, CrossAxisAlignment, Fill, Flex,
+        MainAxisSize, ParentElement, Rect,
+    };
+    use warpui::platform::WindowStyle;
+    use warpui::{
+        App, Element, Entity, Presenter, TypedActionView, View, ViewContext, WindowInvalidation,
+    };
+
+    // Mirror of `PaneView::DRAG_PREVIEW_HEADER_MAX_WIDTH`; kept local so the test
+    // documents the finite cap the fix relies on.
+    const DRAG_PREVIEW_HEADER_MAX_WIDTH: f32 = 400.;
+
+    struct DragPreviewTestView {
+        scroll_state: ClippedScrollStateHandle,
+    }
+
+    impl DragPreviewTestView {
+        fn new(_ctx: &mut ViewContext<Self>) -> Self {
+            Self {
+                scroll_state: ClippedScrollStateHandle::new(),
+            }
+        }
+    }
+
+    impl Entity for DragPreviewTestView {
+        type Event = ();
+    }
+
+    impl View for DragPreviewTestView {
+        fn ui_name() -> &'static str {
+            "DragPreviewTestView"
+        }
+
+        fn render(&self, _app: &warpui::AppContext) -> Box<dyn Element> {
+            // Overflowing content so the clipped scrollable has something to clip.
+            let content = ConstrainedBox::new(Rect::new().finish())
+                .with_width(2000.)
+                .with_height(22.)
+                .finish();
+            let scrollable = NewScrollable::horizontal(
+                SingleAxisConfig::Clipped {
+                    handle: self.scroll_state.clone(),
+                    child: Container::new(content).finish(),
+                },
+                Fill::None,
+                Fill::None,
+                Fill::None,
+            )
+            .finish();
+            let bar = Container::new(scrollable).finish();
+            // The pane-header content column stretches the bar to the header width.
+            let header_column = Flex::column()
+                .with_cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .with_main_axis_size(MainAxisSize::Min)
+                .with_child(bar)
+                .finish();
+            // The fix: the drag-preview column caps the header to a finite width.
+            let drag_preview = Flex::column()
+                .with_main_axis_size(MainAxisSize::Min)
+                .with_child(
+                    ConstrainedBox::new(header_column)
+                        .with_max_width(DRAG_PREVIEW_HEADER_MAX_WIDTH)
+                        .finish(),
+                )
+                .finish();
+            // Outer row hands the drag-preview column an unbounded max width.
+            Flex::row()
+                .with_main_axis_size(MainAxisSize::Min)
+                .with_child(drag_preview)
+                .finish()
+        }
+    }
+
+    impl TypedActionView for DragPreviewTestView {
+        type Action = ();
+    }
+
+    App::test((), |mut app| async move {
+        let (window_id, _view) =
+            app.add_window(WindowStyle::NotStealFocus, DragPreviewTestView::new);
+        let root_view_id = app
+            .root_view_id(window_id)
+            .expect("window should have a root view");
+
+        let mut presenter = Presenter::new(window_id);
+        let invalidation = WindowInvalidation {
+            updated: [root_view_id].into_iter().collect(),
+            ..Default::default()
+        };
+
+        app.update(move |ctx| {
+            presenter.invalidate(invalidation, ctx);
+            // Before the fix this panics in `Scene::validate_rect` while painting
+            // the scrollable at an infinite/NaN width.
+            let scene = presenter.build_scene(vec2f(400., 300.), 1., None, ctx);
+
+            // Every painted rect must have a finite size. Without the width cap,
+            // the clipped scrollable would paint an infinite/NaN-width rect.
+            for layer in scene.layers() {
+                for rect in &layer.rects {
+                    let size = rect.bounds.size();
+                    assert!(
+                        size.x().is_finite() && size.y().is_finite(),
+                        "painted rect should be finite under a capped drag preview, got {size:?}",
+                    );
+                }
+            }
+        });
+    });
+}
 
 /// The data layer that `OrchestrationPillBar::pill_specs` reads must
 /// surface restored orchestration children before any pane has been created.
@@ -58,10 +174,12 @@ fn pill_bar_data_layer_finds_restored_children_before_pane_creation() {
                     })
                     .expect("child conversation data should serialize"),
                     last_modified_at: now,
+                    summary: None,
                 },
                 tasks: vec![warp_multi_agent_api::Task {
                     id: format!("task-{child_id}"),
                     messages: vec![warp_multi_agent_api::Message {
+                        fetched_memories: vec![],
                         id: "child-msg".to_string(),
                         task_id: format!("task-{child_id}"),
                         server_message_data: String::new(),
@@ -107,10 +225,12 @@ fn pill_bar_data_layer_finds_restored_children_before_pane_creation() {
                     })
                     .expect("parent conversation data should serialize"),
                     last_modified_at: now - chrono::Duration::seconds(1),
+                    summary: None,
                 },
                 tasks: vec![warp_multi_agent_api::Task {
                     id: format!("task-{parent_id}"),
                     messages: vec![warp_multi_agent_api::Message {
+                        fetched_memories: vec![],
                         id: "parent-msg".to_string(),
                         task_id: format!("task-{parent_id}"),
                         server_message_data: String::new(),
@@ -135,8 +255,8 @@ fn pill_bar_data_layer_finds_restored_children_before_pane_creation() {
             },
         ];
 
-        let history_model =
-            app.add_singleton_model(|_| BlocklistAIHistoryModel::new(vec![], &conversations));
+        let history_model = app
+            .add_singleton_model(|_| BlocklistAIHistoryModel::new(vec![], vec![], &conversations));
 
         history_model.read(&app, |model, _| {
             // pill_specs walks `descendant_conversation_ids_in_spawn_order`
@@ -194,92 +314,4 @@ fn navigation_action_for_orchestrator_pill_switches_in_place() {
             conversation_id: actual_id,
         } if actual_id == conversation_id
     ));
-}
-
-#[test]
-fn pill_status_sort_key_orders_attention_then_in_progress_then_done() {
-    let blocked = ConversationStatus::Blocked {
-        blocked_action: String::new(),
-    };
-    let blocked_key = pill_status_sort_key(Some(&blocked));
-    let error_key = pill_status_sort_key(Some(&ConversationStatus::Error));
-    let in_progress_key = pill_status_sort_key(Some(&ConversationStatus::InProgress));
-    let cancelled_key = pill_status_sort_key(Some(&ConversationStatus::Cancelled));
-    let success_key = pill_status_sort_key(Some(&ConversationStatus::Success));
-
-    assert!(blocked_key < error_key);
-    assert!(error_key < in_progress_key);
-    assert!(in_progress_key < cancelled_key);
-    // Cancelled and Success share the done bucket; recency decides within it.
-    assert_eq!(cancelled_key, success_key);
-}
-
-#[test]
-fn pill_status_sort_key_treats_none_as_in_progress() {
-    // Safety default for the orchestrator path (never sorted in practice).
-    assert_eq!(
-        pill_status_sort_key(None),
-        pill_status_sort_key(Some(&ConversationStatus::InProgress)),
-    );
-}
-
-#[test]
-fn pill_done_recency_key_puts_most_recent_first_and_unknown_last() {
-    let older = pill_done_recency_key(Some(1_000));
-    let newer = pill_done_recency_key(Some(2_000));
-    let unknown = pill_done_recency_key(None);
-    assert!(newer < older);
-    assert!(older < unknown);
-}
-
-#[test]
-fn sort_pills_bubbles_attention_in_progress_keeps_spawn_done_uses_recency() {
-    let blocked = ConversationStatus::Blocked {
-        blocked_action: String::new(),
-    };
-    // (status, finish time) per spawn index.
-    let inputs: Vec<(ConversationStatus, Option<i64>)> = vec![
-        (ConversationStatus::Success, Some(100)),
-        (ConversationStatus::InProgress, None),
-        (blocked.clone(), None),
-        (ConversationStatus::Cancelled, Some(300)),
-        (ConversationStatus::InProgress, None),
-        (ConversationStatus::Error, None),
-        (ConversationStatus::Success, Some(200)),
-    ];
-    let mut sortable: Vec<(u8, i64, usize)> = inputs
-        .iter()
-        .enumerate()
-        .map(|(idx, (status, ms))| {
-            let status_key = pill_status_sort_key(Some(status));
-            (status_key, pill_secondary_sort_key(status_key, *ms), idx)
-        })
-        .collect();
-    sortable.sort_by_key(|(k, s, idx)| (*k, *s, *idx));
-    let spawn_order: Vec<usize> = sortable.iter().map(|(_, _, idx)| *idx).collect();
-    // Blocked, Error, InProgress (spawn order), then done by recency desc.
-    assert_eq!(spawn_order, vec![2, 5, 1, 4, 3, 6, 0]);
-}
-
-#[test]
-fn sort_pills_is_stable_within_in_progress_bucket() {
-    let in_progress_key = pill_status_sort_key(Some(&ConversationStatus::InProgress));
-    let mut entries: Vec<(u8, i64, usize)> = vec![(in_progress_key, 0, 7), (in_progress_key, 0, 3)];
-    entries.sort_by_key(|(k, s, idx)| (*k, *s, *idx));
-    let spawn_order: Vec<usize> = entries.iter().map(|(_, _, idx)| *idx).collect();
-    assert_eq!(spawn_order, vec![3, 7]);
-}
-
-#[test]
-fn sort_pills_done_bucket_orders_by_recency_regardless_of_completion_type() {
-    // Old Cancelled sinks behind a fresh Success.
-    let cancelled_old = pill_secondary_sort_key(DONE_STATUS_KEY, Some(100));
-    let success_new = pill_secondary_sort_key(DONE_STATUS_KEY, Some(500));
-    let mut entries: Vec<(u8, i64, usize)> = vec![
-        (DONE_STATUS_KEY, cancelled_old, 0),
-        (DONE_STATUS_KEY, success_new, 1),
-    ];
-    entries.sort_by_key(|(k, s, idx)| (*k, *s, *idx));
-    let spawn_order: Vec<usize> = entries.iter().map(|(_, _, idx)| *idx).collect();
-    assert_eq!(spawn_order, vec![1, 0]);
 }

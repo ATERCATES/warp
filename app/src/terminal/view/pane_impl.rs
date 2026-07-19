@@ -22,7 +22,6 @@ use super::{Event, PaneConfiguration, TerminalAction, TerminalViewState, Viewer}
 use crate::ai::agent::conversation::{
     AIConversation, ConversationStatus, ServerAIConversationMetadata,
 };
-use crate::ai::blocklist::agent_view::agent_view_bg_fill;
 use crate::ai::blocklist::agent_view::orchestration_conversation_links::parent_conversation_navigation_card;
 use crate::ai::blocklist::orchestration_topology::orchestration_aware_conversation_status;
 use crate::ai::blocklist::BlocklistAIHistoryModel;
@@ -38,7 +37,7 @@ use crate::pane_group::pane::view::header::components::{
 use crate::pane_group::pane::view::header::{render_pane_header_draggable, PANE_HEADER_HEIGHT};
 use crate::pane_group::pane::view::PaneHeaderAction;
 use crate::pane_group::pane::{view, PaneStack};
-use crate::pane_group::{BackingView, SplitPaneState};
+use crate::pane_group::{BackingView, SplitPaneState, TOGGLE_MAXIMIZE_PANE_BINDING_NAME};
 use crate::settings::app_installation_detection::{
     UserAppInstallDetectionSettings, UserAppInstallStatus,
 };
@@ -51,6 +50,7 @@ use crate::ui_components::agent_icon::terminal_view_agent_icon_variant;
 use crate::ui_components::buttons::icon_button_with_color;
 use crate::ui_components::icon_with_status::render_icon_with_status;
 use crate::ui_components::{blended_colors, icons};
+use crate::util::bindings::keybinding_name_to_display_string;
 use crate::workspace::tab_settings::TabSettings;
 
 /// Total size of the agent icon-with-status component rendered in the pane header.
@@ -290,9 +290,7 @@ impl TerminalView {
             ClipConfig::start()
         };
 
-        let should_render_ambient_agent_indicator =
-            self.ambient_agent_task_id_for_details_panel(app).is_some()
-                || self.model.lock().is_shared_ambient_agent_session();
+        let should_render_ambient_agent_indicator = self.is_cloud_agent_session(app);
         let theme = appearance.theme();
         let render_agent_circle = |variant| {
             render_icon_with_status(
@@ -585,19 +583,11 @@ impl TerminalView {
             header_ctx.draggable_state.clone(),
             app,
         );
-        let header = self.maybe_add_parent_navigation_card(
+        self.maybe_add_parent_navigation_card(
             draggable_header,
             parent_conversation_header_card,
             app,
-        );
-
-        if is_fullscreen_agent_view {
-            Container::new(header)
-                .with_background(agent_view_bg_fill(app))
-                .finish()
-        } else {
-            header
-        }
+        )
     }
 }
 
@@ -699,6 +689,10 @@ impl BackingView for TerminalView {
             items.push(
                 MenuItemFields::toggle_pane_action(is_maximized)
                     .with_on_select_action(TerminalAction::ToggleMaximizePane)
+                    .with_key_shortcut_label(keybinding_name_to_display_string(
+                        TOGGLE_MAXIMIZE_PANE_BINDING_NAME,
+                        ctx,
+                    ))
                     .into_item(),
             );
         }
@@ -912,6 +906,27 @@ impl TerminalView {
                 .is_some_and(|model| model.as_ref(ctx).is_ambient_agent())
     }
 
+    /// Whether this pane should be treated as an ambient agent conversation for display
+    /// purposes (e.g. the ambient agent icon in the pane header and vertical tab). This is the
+    /// single source of truth for that check; surfaces should call it rather than re-deriving
+    /// the condition, so they can't drift apart.
+    ///
+    /// Two signals are combined because they live in different places and neither subsumes the
+    /// other:
+    /// - [`Self::is_ambient_agent_session`] reads the pane's [`AmbientAgentViewModel`], which is
+    ///   how a cloud/ambient run composed or spawned *in this view* is recognized before it has
+    ///   any shared-session source.
+    /// - [`TerminalModel::is_cloud_agent_conversation`] reads model state — a shared *ambient*
+    ///   session or viewing an ambient conversation transcript — which the view model doesn't
+    ///   carry (e.g. a viewer that joined someone else's ambient session).
+    ///
+    /// It deliberately does NOT treat a manually shared *local* (`User`) session as a cloud
+    /// agent session even though it now carries an orchestrator task id on its `source_task_id`
+    /// sidecar (see QUALITY-726).
+    pub fn is_cloud_agent_session(&self, ctx: &AppContext) -> bool {
+        self.is_ambient_agent_session(ctx) || self.model.lock().is_cloud_agent_conversation()
+    }
+
     fn selected_conversation_for_user_facing_chrome<'a>(
         &'a self,
         ctx: &'a AppContext,
@@ -1027,6 +1042,17 @@ impl TerminalView {
         self.selected_conversation_for_user_facing_chrome(ctx)
             .map(|conversation| {
                 self.selected_conversation_display_title_for_chrome(conversation, is_ambient_agent)
+            })
+    }
+
+    /// Whether the selected conversation is a local orchestration child: it was spawned by a
+    /// parent orchestrator and is not executing on a remote worker. These runs are backed by a
+    /// server task (so they carry an ambient task id) but execute locally, so their agent icon
+    /// must use the local treatment rather than the cloud/ambient one.
+    pub(crate) fn selected_conversation_is_local_child(&self, ctx: &AppContext) -> bool {
+        self.selected_conversation_for_user_facing_chrome(ctx)
+            .is_some_and(|conversation| {
+                conversation.is_child_agent_conversation() && !conversation.is_remote_child()
             })
     }
 

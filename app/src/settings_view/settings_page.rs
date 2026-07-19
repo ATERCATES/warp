@@ -39,6 +39,7 @@ use super::mcp_servers_page::MCPServersSettingsPageView;
 use super::privacy_page::PrivacyPageView;
 use super::referrals_page::ReferralsPageView;
 use super::remote_hosts_page::RemoteHostsPageView;
+use super::scripting_page::ScriptingSettingsPageView;
 use super::show_blocks_view::ShowBlocksView;
 use super::teams_page::TeamsPageView;
 use super::warp_drive_page::WarpDriveSettingsPageView;
@@ -113,6 +114,7 @@ pub enum SettingsPageViewHandle {
     Warpify(ViewHandle<WarpifyPageView>),
     Referrals(ViewHandle<ReferralsPageView>),
     RemoteHosts(ViewHandle<RemoteHostsPageView>),
+    Scripting(ViewHandle<ScriptingSettingsPageView>),
     AI(ViewHandle<AISettingsPageView>),
     CloudEnvironments(ViewHandle<EnvironmentsPageView>),
     BillingAndUsage(ViewHandle<BillingAndUsageDispatchView>),
@@ -137,6 +139,7 @@ impl SettingsPageViewHandle {
             Warpify(view_handle) => ChildView::new(view_handle).finish(),
             Referrals(view_handle) => ChildView::new(view_handle).finish(),
             RemoteHosts(view_handle) => ChildView::new(view_handle).finish(),
+            Scripting(view_handle) => ChildView::new(view_handle).finish(),
             AI(view_handle) => ChildView::new(view_handle).finish(),
             CloudEnvironments(view_handle) => ChildView::new(view_handle).finish(),
             BillingAndUsage(view_handle) => ChildView::new(view_handle).finish(),

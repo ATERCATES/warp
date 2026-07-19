@@ -71,3 +71,4 @@ __pycache__/
 .note/
 # Local git worktrees (used by superpowers subagent flows)
 .worktrees/
+.claude/scheduled_tasks.lock
