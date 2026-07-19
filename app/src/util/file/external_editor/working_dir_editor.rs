@@ -67,7 +67,7 @@ impl WorkingDirEditor {
             Self::Antigravity => EditorMeta {
                 display_name: "Antigravity",
                 command: "antigravity",
-                icon: Icon::AntigravityLogo,
+                icon: Icon::AntigravityIdeLogo,
                 ssh: SshArgStyle::VsCodeRemote,
             },
             Self::Zed => EditorMeta {
